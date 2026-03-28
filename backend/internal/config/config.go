@@ -28,6 +28,12 @@ type Config struct {
 	VisionModel    string
 	VisionMock     bool
 	VisionQueue    string
+	SpeechProvider string
+	SpeechTTSModel string
+	SpeechASRModel string
+	SpeechVoice    string
+	SpeechLanguage string
+	SpeechMock     bool
 }
 
 func Load() Config {
@@ -53,6 +59,12 @@ func Load() Config {
 		VisionModel:    getEnv("VISION_MODEL", "gpt-4.1-mini"),
 		VisionMock:     getEnvBool("VISION_MOCK", false),
 		VisionQueue:    getEnv("VISION_QUEUE", "vision_tasks"),
+		SpeechProvider: getEnv("SPEECH_PROVIDER", "openai"),
+		SpeechTTSModel: getEnv("SPEECH_TTS_MODEL", "gpt-4o-mini-tts"),
+		SpeechASRModel: getEnv("SPEECH_ASR_MODEL", "whisper-1"),
+		SpeechVoice:    getEnv("SPEECH_VOICE", "alloy"),
+		SpeechLanguage: getEnv("SPEECH_LANGUAGE", "zh"),
+		SpeechMock:     getEnvBool("SPEECH_MOCK", false),
 	}
 }
 

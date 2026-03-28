@@ -3,6 +3,8 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
       <h1 style="margin: 0">AI 聊天</h1>
       <div>
+        <button style="margin-right: 8px" @click="router.push('/vision')">图像识别</button>
+        <button style="margin-right: 8px" @click="router.push('/speech')">语音能力</button>
         <span v-if="email" style="margin-right: 12px">{{ email }}</span>
         <button @click="logout">退出登录</button>
       </div>

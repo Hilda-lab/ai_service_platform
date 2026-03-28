@@ -137,3 +137,21 @@ paths:
       responses:
         '200':
           description: OK
+  /api/v1/mcp/ws:
+    get:
+      summary: MCP websocket gateway (JWT required)
+      responses:
+        '101':
+          description: Switching Protocols
+  /api/v1/speech/tts:
+    post:
+      summary: Text to speech
+      responses:
+        '200':
+          description: OK
+  /api/v1/speech/asr:
+    post:
+      summary: Speech to text
+      responses:
+        '200':
+          description: OK

@@ -42,5 +42,9 @@ vision:
   queue: vision_tasks
 
 speech:
-  tts_provider: ""
-  asr_provider: ""
+  provider: openai
+  tts_model: gpt-4o-mini-tts
+  asr_model: whisper-1
+  voice: alloy
+  language: zh
+  mock: false

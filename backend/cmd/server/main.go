@@ -16,7 +16,9 @@ import (
 	"ai-service-platform/backend/internal/infrastructure/mq/rabbitmq"
 	authservice "ai-service-platform/backend/internal/service/auth"
 	chatservice "ai-service-platform/backend/internal/service/chat"
+	mcpservice "ai-service-platform/backend/internal/service/mcp"
 	ragservice "ai-service-platform/backend/internal/service/rag"
+	speechservice "ai-service-platform/backend/internal/service/speech"
 	visionservice "ai-service-platform/backend/internal/service/vision"
 )
 
@@ -63,6 +65,27 @@ func main() {
 	visionHandler := handler.NewVisionHandler(visionSvc)
 	chatSvc := chatservice.NewService(chatRepo, redisClient, openaiClient, ollamaClient, ragSvc, cfg.AIProvider, cfg.OpenAIModel, cfg.OllamaModel)
 	chatHandler := handler.NewChatHandler(chatSvc)
+	mcpHub := mcpservice.NewHub(chatSvc)
+	mcpHandler := handler.NewMCPHandler(mcpHub)
+	speechSvc := speechservice.NewService(
+		func(ctx context.Context, req speechservice.TTSRequest) (*speechservice.TTSResult, error) {
+			result, err := openaiClient.TextToSpeech(ctx, openaiclient.TTSRequest{Model: req.Model, Voice: req.Voice, Text: req.Text, Format: req.Format})
+			if err != nil {
+				return nil, err
+			}
+			return &speechservice.TTSResult{AudioBase64: result.AudioBase64, MIMEType: result.MIMEType}, nil
+		},
+		func(ctx context.Context, req speechservice.ASRRequest) (string, error) {
+			return openaiClient.SpeechToText(ctx, openaiclient.ASRRequest{Model: req.Model, Language: req.Language, Prompt: req.Prompt, FileName: req.FileName, AudioBytes: req.AudioBytes})
+		},
+		cfg.SpeechProvider,
+		cfg.SpeechTTSModel,
+		cfg.SpeechASRModel,
+		cfg.SpeechVoice,
+		cfg.SpeechLanguage,
+		cfg.SpeechMock,
+	)
+	speechHandler := handler.NewSpeechHandler(speechSvc)
 
 	if err := rabbitmq.StartVisionConsumer(context.Background(), cfg.RabbitMQURL, cfg.VisionQueue, func(taskID uint) error {
 		return visionSvc.ProcessTask(context.Background(), taskID)
@@ -71,7 +94,7 @@ func main() {
 	}
 
 	r := router.NewRouter(
-		router.Handlers{Auth: authHandler, Chat: chatHandler, RAG: ragHandler, Vision: visionHandler},
+		router.Handlers{Auth: authHandler, Chat: chatHandler, RAG: ragHandler, Vision: visionHandler, MCP: mcpHandler, Speech: speechHandler},
 		router.RouterOptions{JWTSecret: cfg.JWTSecret},
 	)
 

@@ -15,6 +15,8 @@ type Handlers struct {
 	Chat *handler.ChatHandler
 	RAG  *handler.RAGHandler
 	Vision *handler.VisionHandler
+	MCP *handler.MCPHandler
+	Speech *handler.SpeechHandler
 }
 
 type RouterOptions struct {
@@ -63,6 +65,17 @@ func NewRouter(handlers Handlers, opts RouterOptions) *gin.Engine {
 			vision.POST("/recognize", handlers.Vision.Recognize)
 			vision.POST("/tasks", handlers.Vision.SubmitTask)
 			vision.GET("/tasks/:id", handlers.Vision.GetTask)
+		}
+
+		mcp := api.Group("/mcp", middleware.JWTAuth(opts.JWTSecret))
+		{
+			mcp.GET("/ws", handlers.MCP.WebSocket)
+		}
+
+		speech := api.Group("/speech", middleware.JWTAuth(opts.JWTSecret))
+		{
+			speech.POST("/tts", handlers.Speech.TextToSpeech)
+			speech.POST("/asr", handlers.Speech.SpeechToText)
 		}
 	}
 
