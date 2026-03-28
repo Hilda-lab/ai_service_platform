@@ -1,0 +1,31 @@
+openapi: 3.0.3
+info:
+  title: AI Service Platform API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/v1/health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+  /api/v1/auth/login:
+    post:
+      summary: User login
+      responses:
+        '200':
+          description: OK
+  /api/v1/chat/completions:
+    post:
+      summary: Chat completion
+      responses:
+        '200':
+          description: OK
+  /api/v1/vision/recognize:
+    post:
+      summary: Image recognition
+      responses:
+        '200':
+          description: OK

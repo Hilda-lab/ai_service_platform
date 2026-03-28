@@ -1,0 +1,30 @@
+version: '3.9'
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: ai_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ai_platform
+      MYSQL_USER: ai_user
+      MYSQL_PASSWORD: ai_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:7
+    container_name: ai_redis
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: ai_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+volumes:
+  mysql_data:
