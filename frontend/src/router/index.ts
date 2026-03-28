@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import ChatView from '../views/ChatView.vue'
 import VisionView from '../views/VisionView.vue'
+import { getToken } from '../utils/auth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -11,6 +12,17 @@ const router = createRouter({
     { path: '/chat', name: 'chat', component: ChatView },
     { path: '/vision', name: 'vision', component: VisionView },
   ],
+})
+
+router.beforeEach((to) => {
+  const token = getToken()
+  if ((to.path === '/chat' || to.path === '/vision') && !token) {
+    return '/login'
+  }
+  if (to.path === '/login' && token) {
+    return '/chat'
+  }
+  return true
 })
 
 export default router

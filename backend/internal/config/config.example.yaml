@@ -22,12 +22,24 @@ ai:
   provider: openai
   openai:
     api_key: ""
-    base_url: ""
+    base_url: https://cdn.12ai.org
+    model: gpt-5.1
+  gemini:
+    api_key: ""
+    base_url: https://cdn.12ai.org
+    model: gemini-3-pro-preview
   ollama:
     base_url: http://127.0.0.1:11434
+    model: llama3.1
 
 rag:
   vector_db_url: ""
+
+vision:
+  provider: openai
+  model: gpt-4.1-mini
+  mock: false
+  queue: vision_tasks
 
 speech:
   tts_provider: ""

@@ -20,12 +20,120 @@ paths:
   /api/v1/chat/completions:
     post:
       summary: Chat completion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: integer
+                provider:
+                  type: string
+                model:
+                  type: string
+                message:
+                  type: string
+                use_rag:
+                  type: boolean
+      responses:
+        '200':
+          description: OK
+  /api/v1/chat/completions/stream:
+    post:
+      summary: Chat completion stream (SSE)
+      responses:
+        '200':
+          description: OK
+  /api/v1/chat/sessions:
+    get:
+      summary: List chat sessions
+      responses:
+        '200':
+          description: OK
+  /api/v1/chat/sessions/{id}/messages:
+    get:
+      summary: List chat messages by session
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        '200':
+          description: OK
+  /api/v1/rag/documents:
+    get:
+      summary: List RAG documents
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Ingest document into RAG
+      responses:
+        '200':
+          description: OK
+  /api/v1/rag/retrieve:
+    post:
+      summary: Retrieve relevant chunks by query
       responses:
         '200':
           description: OK
   /api/v1/vision/recognize:
     post:
-      summary: Image recognition
+      summary: Image recognition (sync)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                prompt:
+                  type: string
+                provider:
+                  type: string
+                model:
+                  type: string
+      responses:
+        '200':
+          description: OK
+  /api/v1/vision/tasks:
+    post:
+      summary: Submit image recognition task (async)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                prompt:
+                  type: string
+                provider:
+                  type: string
+                model:
+                  type: string
+      responses:
+        '200':
+          description: OK
+  /api/v1/vision/tasks/{id}:
+    get:
+      summary: Get async vision task status
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
       responses:
         '200':
           description: OK

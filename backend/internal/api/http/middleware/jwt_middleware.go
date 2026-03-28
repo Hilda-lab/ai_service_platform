@@ -1,9 +1,38 @@
 package middleware
 
-import "github.com/gin-gonic/gin"
+import (
+	"net/http"
+	"strings"
 
-func JWTAuth() gin.HandlerFunc {
+	"github.com/gin-gonic/gin"
+
+	jwtpkg "ai-service-platform/backend/pkg/jwt"
+)
+
+func JWTAuth(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "missing authorization header"})
+			c.Abort()
+			return
+		}
+
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "invalid authorization header"})
+			c.Abort()
+			return
+		}
+
+		claims, err := jwtpkg.ParseToken(parts[1], secret)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "invalid token"})
+			c.Abort()
+			return
+		}
+
+		c.Set("user_id", claims.UserID)
 		c.Next()
 	}
 }
