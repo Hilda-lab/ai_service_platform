@@ -1,6 +1,9 @@
 <template>
   <main style="padding: 24px; max-width: 900px; margin: 0 auto">
-    <h1>语音识别与合成</h1>
+    <div style="display: flex; justify-content: space-between; align-items: center">
+      <h1>语音识别与合成</h1>
+      <button @click="router.push('/chat')">返回聊天</button>
+    </div>
 
     <section style="margin-top: 16px; border: 1px solid #ddd; padding: 12px">
       <h3 style="margin-top: 0">文本转语音 (TTS)</h3>

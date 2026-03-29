@@ -1,6 +1,9 @@
 <template>
   <main style="padding: 24px; max-width: 900px; margin: 0 auto">
-    <h1>图像识别</h1>
+    <div style="display: flex; justify-content: space-between; align-items: center">
+      <h1>图像识别</h1>
+      <button @click="router.push('/chat')">返回聊天</button>
+    </div>
 
     <div style="display: grid; gap: 10px; margin-top: 16px">
       <input type="file" accept="image/*" @change="onFileChange" />

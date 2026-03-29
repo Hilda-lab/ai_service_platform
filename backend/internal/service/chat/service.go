@@ -24,10 +24,23 @@ type Service struct {
 	defaultProvider    string
 	defaultOpenAIModel string
 	defaultOllamaModel string
+	toolProvider       ToolProvider
 }
 
 type Retriever interface {
 	RetrieveContents(ctx context.Context, userID uint, query string, topK int) ([]string, error)
+}
+
+// ToolProvider 接口用于从 MCP Hub 获取可用工具
+type ToolProvider interface {
+	GetTools(ctx context.Context, userID uint) ([]map[string]interface{}, error)
+	ExecuteTool(ctx context.Context, userID uint, toolName string, arguments json.RawMessage) (interface{}, error)
+}
+
+type ToolInfo struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Parameters  map[string]interface{} `json:"parameters,omitempty"`
 }
 
 type ChatRequest struct {
@@ -70,7 +83,13 @@ func NewService(repo repository.ChatRepository, redis *goredis.Client, openai *o
 		defaultProvider:    defaultProvider,
 		defaultOpenAIModel: defaultOpenAIModel,
 		defaultOllamaModel: defaultOllamaModel,
+		toolProvider:       nil,
 	}
+}
+
+// SetToolProvider 设置工具提供者（用于 Function Calling）
+func (s *Service) SetToolProvider(tp ToolProvider) {
+	s.toolProvider = tp
 }
 
 func (s *Service) ListSessions(ctx context.Context, userID uint) ([]entity.ChatSession, error) {
@@ -120,7 +139,28 @@ func (s *Service) Complete(ctx context.Context, req ChatRequest) (*ChatResult, e
 	}
 	history = append(history, contextMessage{Role: "user", Content: userContent})
 
-	reply, err := s.generateReply(ctx, provider, model, history)
+	if directReply, handled, err := s.tryDirectToolInvocation(ctx, req.UserID, userContent); err != nil {
+		return nil, err
+	} else if handled {
+		if err := s.repo.CreateMessage(ctx, &entity.ChatMessage{
+			SessionID: session.ID,
+			UserID:    req.UserID,
+			Role:      "assistant",
+			Content:   directReply,
+			Provider:  provider,
+			Model:     model,
+		}); err != nil {
+			return nil, err
+		}
+
+		if err := s.refreshCache(ctx, req.UserID, session.ID); err != nil {
+			return nil, err
+		}
+
+		return &ChatResult{SessionID: session.ID, Provider: provider, Model: model, Reply: directReply}, nil
+	}
+
+	reply, err := s.generateReply(ctx, req.UserID, provider, model, history)
 	if err != nil {
 		return nil, err
 	}
@@ -174,6 +214,30 @@ func (s *Service) Stream(ctx context.Context, req ChatRequest, onChunk func(chun
 		return nil, err
 	}
 	history = append(history, contextMessage{Role: "user", Content: userContent})
+
+	if directReply, handled, err := s.tryDirectToolInvocation(ctx, req.UserID, userContent); err != nil {
+		return nil, err
+	} else if handled {
+		if err := onChunk(directReply); err != nil {
+			return nil, err
+		}
+		if err := s.repo.CreateMessage(ctx, &entity.ChatMessage{
+			SessionID: session.ID,
+			UserID:    req.UserID,
+			Role:      "assistant",
+			Content:   directReply,
+			Provider:  provider,
+			Model:     model,
+		}); err != nil {
+			return nil, err
+		}
+
+		if err := s.refreshCache(ctx, req.UserID, session.ID); err != nil {
+			return nil, err
+		}
+
+		return &ChatResult{SessionID: session.ID, Provider: provider, Model: model, Reply: directReply}, nil
+	}
 
 	var builder strings.Builder
 	if provider == "openai" {
@@ -308,20 +372,9 @@ func (s *Service) refreshCache(ctx context.Context, userID, sessionID uint) erro
 	return s.redis.Set(ctx, s.contextKey(sessionID), string(payload), 0).Err()
 }
 
-func (s *Service) generateReply(ctx context.Context, provider, model string, messages []contextMessage) (string, error) {
+func (s *Service) generateReply(ctx context.Context, userID uint, provider, model string, messages []contextMessage) (string, error) {
 	if provider == "openai" {
-		reqMessages := make([]openaiclient.ChatMessage, 0, len(messages))
-		for _, message := range messages {
-			reqMessages = append(reqMessages, openaiclient.ChatMessage{Role: message.Role, Content: message.Content})
-		}
-		resp, err := s.openai.ChatCompletions(ctx, openaiclient.ChatCompletionRequest{Model: model, Messages: reqMessages})
-		if err != nil {
-			return "", err
-		}
-		if len(resp.Choices) == 0 {
-			return "", errors.New("empty response")
-		}
-		return resp.Choices[0].Message.Content, nil
+		return s.generateReplyWithTools(ctx, userID, model, messages)
 	}
 
 	if provider == "ollama" {
@@ -337,6 +390,178 @@ func (s *Service) generateReply(ctx context.Context, provider, model string, mes
 	}
 
 	return "", fmt.Errorf("unsupported provider: %s", provider)
+}
+
+func (s *Service) tryDirectToolInvocation(ctx context.Context, userID uint, userContent string) (string, bool, error) {
+	if s.toolProvider == nil {
+		return "", false, nil
+	}
+
+	normalized := strings.ToLower(strings.TrimSpace(userContent))
+	if !strings.Contains(userContent, "调用") && !strings.Contains(normalized, "call ") {
+		return "", false, nil
+	}
+
+	toolName := ""
+	args := map[string]interface{}{}
+
+	switch {
+	case strings.Contains(normalized, "get_datetime"):
+		toolName = "get_datetime"
+		if strings.Contains(normalized, "asia/shanghai") || strings.Contains(userContent, "北京时间") {
+			args["timezone"] = "Asia/Shanghai"
+		}
+		if _, ok := args["timezone"]; !ok {
+			args["timezone"] = "Asia/Shanghai"
+		}
+	case strings.Contains(normalized, "query_weather"):
+		toolName = "query_weather"
+		args["timezone"] = "Asia/Shanghai"
+		args["city"] = detectCity(userContent)
+	case strings.Contains(normalized, "query_system_info"):
+		toolName = "query_system_info"
+	case strings.Contains(normalized, "query_rag"):
+		toolName = "query_rag"
+		args["query"] = userContent
+		args["top_k"] = 3
+	default:
+		return "", false, nil
+	}
+
+	argsJSON, err := json.Marshal(args)
+	if err != nil {
+		return "", true, err
+	}
+
+	result, err := s.toolProvider.ExecuteTool(ctx, userID, toolName, argsJSON)
+	if err != nil {
+		return "", true, err
+	}
+
+	payload, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return "", true, err
+	}
+
+	reply := fmt.Sprintf("已调用工具 %s，返回结果：\n%s", toolName, string(payload))
+	return reply, true, nil
+}
+
+func detectCity(text string) string {
+	switch {
+	case strings.Contains(text, "北京"):
+		return "Beijing"
+	case strings.Contains(text, "广州"):
+		return "Guangzhou"
+	case strings.Contains(text, "深圳"):
+		return "Shenzhen"
+	case strings.Contains(text, "杭州"):
+		return "Hangzhou"
+	case strings.Contains(text, "成都"):
+		return "Chengdu"
+	default:
+		return "Shanghai"
+	}
+}
+
+func (s *Service) generateReplyWithTools(ctx context.Context, userID uint, model string, messages []contextMessage) (string, error) {
+	// 转换消息格式
+	reqMessages := make([]openaiclient.ChatMessage, 0, len(messages))
+	for _, message := range messages {
+		reqMessages = append(reqMessages, openaiclient.ChatMessage{Role: message.Role, Content: message.Content})
+	}
+
+	// 获取可用工具（如果配置了 toolProvider）
+	var tools []openaiclient.ToolDefinition
+	if s.toolProvider != nil {
+		toolInfos, err := s.toolProvider.GetTools(ctx, userID)
+		if err == nil && len(toolInfos) > 0 {
+			tools = make([]openaiclient.ToolDefinition, 0, len(toolInfos))
+			for _, info := range toolInfos {
+				var toolDef openaiclient.ToolDefinition
+				toolDef.Type = "function"
+				toolDef.Function.Name, _ = info["name"].(string)
+				toolDef.Function.Description, _ = info["description"].(string)
+				if params, ok := info["parameters"].(map[string]interface{}); ok {
+					toolDef.Function.Parameters = params
+				}
+				tools = append(tools, toolDef)
+			}
+		}
+	}
+
+	// 最多5次迭代以防止无限循环
+	for i := 0; i < 5; i++ {
+		req := openaiclient.ChatCompletionRequest{
+			Model:    model,
+			Messages: reqMessages,
+			Tools:    tools,
+		}
+		
+		// 调试输出：记录工具信息
+		if len(tools) > 0 {
+			fmt.Printf("[DEBUG] Iteration %d: Sending %d tools to AI\n", i, len(tools))
+			for _, t := range tools {
+				fmt.Printf("  - Tool: %s\n", t.Function.Name)
+			}
+		}
+		
+		resp, err := s.openai.ChatCompletions(ctx, req)
+		if err != nil {
+			return "", err
+		}
+
+		if len(resp.Choices) == 0 {
+			return "", errors.New("empty response")
+		}
+
+		choice := resp.Choices[0]
+
+		// 调试输出：记录 AI 的响应
+		fmt.Printf("[DEBUG] Iteration %d: FinishReason=%s, ToolCalls=%d\n", i, choice.FinishReason, len(choice.Message.ToolCalls))
+
+		// 检查是否需要调用工具
+		if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) > 0 {
+			// 添加助手响应到消息历史
+			reqMessages = append(reqMessages, openaiclient.ChatMessage{
+				Role:      "assistant",
+				ToolCalls: choice.Message.ToolCalls,
+			})
+
+			// 执行所有工具调用
+			for _, toolCall := range choice.Message.ToolCalls {
+				// 解析工具参数
+				var args map[string]interface{}
+				if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
+					args = map[string]interface{}{}
+				}
+				argsJSON, _ := json.Marshal(args)
+
+				// 执行工具
+				result, err := s.toolProvider.ExecuteTool(ctx, userID, toolCall.Function.Name, argsJSON)
+				if err != nil {
+					result = map[string]interface{}{"error": err.Error()}
+				}
+
+				// 将工具结果添加到消息历史
+				resultJSON, _ := json.Marshal(result)
+				reqMessages = append(reqMessages, openaiclient.ChatMessage{
+					Role:       "user",
+					ToolCallID: toolCall.ID,
+					Name:       toolCall.Function.Name,
+					Content:    string(resultJSON),
+				})
+			}
+
+			// 继续循环，让 AI 生成最终响应
+			continue
+		}
+
+		// 获得文本响应
+		return choice.Message.Content, nil
+	}
+
+	return "", errors.New("too many tool calls, aborting")
 }
 
 func (s *Service) streamOpenAI(ctx context.Context, model string, messages []contextMessage, onChunk func(chunk string) error) error {

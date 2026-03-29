@@ -72,7 +72,9 @@ func main() {
 	chatSvc := chatservice.NewService(chatRepo, redisClient, openaiClient, ollamaClient, ragSvc, cfg.AIProvider, cfg.OpenAIModel, cfg.OllamaModel)
 	chatHandler := handler.NewChatHandler(chatSvc)
 	mcpHub := mcpservice.NewHub(chatSvc, ragSvc)
-	mcpHandler := handler.NewMCPHandler(mcpHub)
+	// 将 MCP Hub 设置为聊天服务的工具提供者，启用 Function Calling
+	chatSvc.SetToolProvider(mcpHub)
+	mcpHandler := handler.NewMCPHandler(mcpHub, cfg.JWTSecret)
 	speechSvc := speechservice.NewService(
 		func(ctx context.Context, req speechservice.TTSRequest) (*speechservice.TTSResult, error) {
 			result, err := openaiClient.TextToSpeech(ctx, openaiclient.TTSRequest{Model: req.Model, Voice: req.Voice, Text: req.Text, Format: req.Format})

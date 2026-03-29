@@ -1,4 +1,4 @@
-import { request } from './client'
+import { API_BASE_URL, request } from './client'
 
 export type ChatSession = {
   id: number
@@ -63,7 +63,7 @@ export async function completionsStream(
   payload: CompletionPayload,
   onEvent: (event: { type: string; content?: string; session_id?: number; message?: string }) => void,
 ) {
-  const response = await fetch('http://localhost:8080/api/v1/chat/completions/stream', {
+  const response = await fetch(`${API_BASE_URL}/chat/completions/stream`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,

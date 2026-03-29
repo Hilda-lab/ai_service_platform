@@ -1,4 +1,5 @@
-const BASE_URL = 'http://localhost:8080/api/v1'
+const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:28080').replace(/\/$/, '')
+export const API_BASE_URL = `${API_ORIGIN}/api/v1`
 
 export type ApiResponse<T> = {
   message?: string
@@ -7,7 +8,7 @@ export type ApiResponse<T> = {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(options.headers || {}),

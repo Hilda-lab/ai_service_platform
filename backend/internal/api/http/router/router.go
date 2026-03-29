@@ -67,7 +67,7 @@ func NewRouter(handlers Handlers, opts RouterOptions) *gin.Engine {
 			vision.GET("/tasks/:id", handlers.Vision.GetTask)
 		}
 
-		mcp := api.Group("/mcp", middleware.JWTAuth(opts.JWTSecret))
+		mcp := api.Group("/mcp")
 		{
 			mcp.GET("/ws", handlers.MCP.WebSocket)
 		}

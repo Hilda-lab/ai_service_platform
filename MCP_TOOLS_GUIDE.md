@@ -15,8 +15,19 @@ npm install -g wscat
 ### 2. 连接 MCP WebSocket
 
 ```bash
-wscat -c ws://127.0.0.1:28080/api/v1/mcp/ws
+
+# 先登录拿到 JWT（示例）
+curl -s -X POST http://127.0.0.1:28080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"testuser@example.com","password":"TestPassword123"}' 
+# 使用 query 参数传 token（推荐）
+wscat -c "ws://127.0.0.1:28080/api/v1/mcp/ws?token=$TOKEN"
+
+# 也可使用 Header 传 token
+wscat -c ws://127.0.0.1:28080/api/v1/mcp/ws -H "Authorization: Bearer $TOKEN"
 ```
+
+> 说明：MCP WebSocket 需要鉴权，不带 token 会返回 401。
 
 ---
 
@@ -189,7 +200,13 @@ wscat -c ws://127.0.0.1:28080/api/v1/mcp/ws
 ### 第 1 步：连接 WebSocket
 
 ```bash
-wscat -c ws://127.0.0.1:28080/api/v1/mcp/ws
+# 先登录获取 token
+TOKEN=$(curl -s -X POST http://127.0.0.1:28080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"testuser@example.com","password":"TestPassword123"}' | jq -r '.data.token')
+
+# 带 token 连接
+wscat -c "ws://127.0.0.1:28080/api/v1/mcp/ws?token=$TOKEN"
 ```
 
 ### 第 2 步：查看可用工具
@@ -254,6 +271,7 @@ h.tools["call_api"] = &Tool{...}
 
 ## 调试技巧
 
+- **WebSocket 连接 401？** 通常是未携带 JWT。请先登录拿 token，并通过 `?token=` 或 `Authorization: Bearer` 传入
 - **WebSocket 连接失败？** 确保后端在 28080 端口运行，且 MCP 路由是 `/api/v1/mcp/ws`
 - **工具返回错误？** 检查 `args` 参数是否与工具定义的 `parameters` 匹配
 - **知识库查询无结果？** 先上传文档到 RAG，确保已经有向量化的文档

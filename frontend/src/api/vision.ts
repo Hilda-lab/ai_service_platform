@@ -1,4 +1,6 @@
-const BASE_URL = 'http://localhost:8080/api/v1/vision'
+import { API_BASE_URL } from './client'
+
+const BASE_URL = `${API_BASE_URL}/vision`
 
 export type VisionTask = {
   id: number

@@ -3,7 +3,7 @@ info:
   title: AI Service Platform API
   version: 0.1.0
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:28080
 paths:
   /api/v1/health:
     get:

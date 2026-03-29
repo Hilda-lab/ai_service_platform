@@ -376,8 +376,13 @@ curl.exe -s -X POST http://127.0.0.1:28080/api/v1/speech/asr `
 # 安装 wscat
 npm install -g wscat
 
-# 连接 WebSocket
-wscat -c ws://127.0.0.1:28080/api/v1/mcp/ws
+# 先登录拿 token（Linux/Mac）
+token=$(curl -s -X POST http://127.0.0.1:28080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"testuser@example.com","password":"TestPassword123"}' | jq -r '.data.token')
+
+# 带 token 连接 WebSocket
+wscat -c "ws://127.0.0.1:28080/api/v1/mcp/ws?token=$token"
 
 # 连接后，在终端中输入 JSON-RPC 请求
 {"jsonrpc":"2.0","method":"ping","params":{},"id":1}
@@ -385,6 +390,8 @@ wscat -c ws://127.0.0.1:28080/api/v1/mcp/ws
 # 预期收到
 {"jsonrpc":"2.0","result":{"pong":true},"id":1}
 ```
+
+> 如果返回 401 Unauthorized，说明未携带 JWT token 或 token 失效。
 
 > **关键指标：** 能够建立 WebSocket 连接并交换 JSON-RPC 消息，说明 ✅ MCP 网关可用
 

@@ -1,4 +1,6 @@
-const BASE_URL = 'http://localhost:8080/api/v1/speech'
+import { API_BASE_URL } from './client'
+
+const BASE_URL = `${API_BASE_URL}/speech`
 
 export async function textToSpeech(
   token: string,
