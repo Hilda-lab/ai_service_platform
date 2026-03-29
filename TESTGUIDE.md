@@ -33,11 +33,11 @@ MYSQL_DSN=ai_user:ai_pass@tcp(127.0.0.1:3307)/ai_platform?charset=utf8mb4&parseT
 REDIS_ADDR=127.0.0.1:6379
 REDIS_PASSWORD=
 REDIS_DB=0
-HTTP_PORT=8080
+HTTP_PORT=28080
 JWT_SECRET=你的JWT密钥
 ```
 
-> **注意：** 如果本地 8080 端口被占用，改为其他端口（如 28080）
+> **注意：** 如果本地 28080 端口被占用，改为其他端口（如 18080）
 
 ### 3. 启动后端服务
 
@@ -50,7 +50,7 @@ go run ./cmd/server
 **预期输出：**
 ```
 [GIN-debug] Loaded HTML Templates (0): 
-[GIN-debug] Listening and serving HTTP on :8080
+[GIN-debug] Listening and serving HTTP on :28080
 [GIN-debug] POST   /api/v1/auth/register
 [GIN-debug] POST   /api/v1/auth/login
 [GIN-debug] GET    /api/v1/auth/profile
@@ -85,7 +85,7 @@ VITE v5.x.x  ready in xxx ms
 
 **命令：**
 ```bash
-curl -s http://127.0.0.1:8080/api/v1/health | jq .
+curl -s http://127.0.0.1:28080/api/v1/health | jq .
 ```
 
 **预期响应：**
@@ -105,7 +105,7 @@ curl -s http://127.0.0.1:8080/api/v1/health | jq .
 #### B1. 用户注册
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/api/v1/auth/register \
+curl -s -X POST http://127.0.0.1:28080/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "email": "testuser@example.com",
@@ -127,7 +127,7 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/auth/register \
 #### B2. 用户登录
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/api/v1/auth/login \
+curl -s -X POST http://127.0.0.1:28080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "testuser@example.com",
@@ -148,7 +148,7 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/auth/login \
 **保存 token：** 
 ```bash
 # Windows PowerShell
-$response = curl.exe -s -X POST http://127.0.0.1:8080/api/v1/auth/login `
+$response = curl.exe -s -X POST http://127.0.0.1:28080/api/v1/auth/login `
   -H "Content-Type: application/json" `
   -d '{"email":"testuser@example.com","password":"TestPassword123"}' | ConvertFrom-Json
 $token = $response.data.token
@@ -161,11 +161,11 @@ Write-Output "Token: $token"
 
 ```bash
 # Linux/Mac
-curl -s http://127.0.0.1:8080/api/v1/auth/profile \
+curl -s http://127.0.0.1:28080/api/v1/auth/profile \
   -H "Authorization: Bearer $token" | jq .
 
 # Windows PowerShell
-curl.exe -s http://127.0.0.1:8080/api/v1/auth/profile `
+curl.exe -s http://127.0.0.1:28080/api/v1/auth/profile `
   -H "Authorization: Bearer $token" | ConvertFrom-Json | ConvertTo-Json
 ```
 
@@ -190,7 +190,7 @@ curl.exe -s http://127.0.0.1:8080/api/v1/auth/profile `
 #### C1. 创建聊天会话
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/api/v1/chat/sessions \
+curl -s -X POST http://127.0.0.1:28080/api/v1/chat/sessions \
   -H "Authorization: Bearer $token" \
   -H "Content-Type: application/json" \
   -d '{}' | jq .
@@ -210,7 +210,7 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/chat/sessions \
 #### C2. 发送聊天消息
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/api/v1/chat/completions \
+curl -s -X POST http://127.0.0.1:28080/api/v1/chat/completions \
   -H "Authorization: Bearer $token" \
   -H "Content-Type: application/json" \
   -d '{
@@ -245,7 +245,7 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/chat/completions \
 如果已经导入知识库，可验证 RAG：
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/api/v1/chat/completions \
+curl -s -X POST http://127.0.0.1:28080/api/v1/chat/completions \
   -H "Authorization: Bearer $token" \
   -H "Content-Type: application/json" \
   -d '{
@@ -271,7 +271,7 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/chat/completions \
 
 ```bash
 # Linux/Mac
-curl -s -X POST http://127.0.0.1:8080/api/v1/vision/recognize \
+curl -s -X POST http://127.0.0.1:28080/api/v1/vision/recognize \
   -H "Authorization: Bearer $token" \
   -F "image=@/path/to/image.jpg" \
   -F "prompt=这是什么？" \
@@ -279,7 +279,7 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/vision/recognize \
   -F "model=gpt-4.1-mini" | jq .
 
 # Windows PowerShell
-curl.exe -s -X POST http://127.0.0.1:8080/api/v1/vision/recognize `
+curl.exe -s -X POST http://127.0.0.1:28080/api/v1/vision/recognize `
   -H "Authorization: Bearer $token" `
   -F "image=@C:\path\to\image.jpg" `
   -F "prompt=这是什么？" `
@@ -307,7 +307,7 @@ curl.exe -s -X POST http://127.0.0.1:8080/api/v1/vision/recognize `
 **目的：** 验证文本转语音功能
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/api/v1/speech/tts \
+curl -s -X POST http://127.0.0.1:28080/api/v1/speech/tts \
   -H "Authorization: Bearer $token" \
   -H "Content-Type: application/json" \
   -d '{
@@ -341,14 +341,14 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/speech/tts \
 
 ```bash
 # Linux/Mac
-curl -s -X POST http://127.0.0.1:8080/api/v1/speech/asr \
+curl -s -X POST http://127.0.0.1:28080/api/v1/speech/asr \
   -H "Authorization: Bearer $token" \
   -F "audio=@/path/to/audio.mp3" \
   -F "model=gpt-4o-mini-asr" \
   -F "language=zh"
 
 # Windows PowerShell
-curl.exe -s -X POST http://127.0.0.1:8080/api/v1/speech/asr `
+curl.exe -s -X POST http://127.0.0.1:28080/api/v1/speech/asr `
   -H "Authorization: Bearer $token" `
   -F "audio=@C:\path\to\audio.mp3" `
   -F "model=gpt-4o-mini-asr" `
@@ -377,7 +377,7 @@ curl.exe -s -X POST http://127.0.0.1:8080/api/v1/speech/asr `
 npm install -g wscat
 
 # 连接 WebSocket
-wscat -c http://127.0.0.1:8080/api/v1/mcp/connect
+wscat -c ws://127.0.0.1:28080/api/v1/mcp/ws
 
 # 连接后，在终端中输入 JSON-RPC 请求
 {"jsonrpc":"2.0","method":"ping","params":{},"id":1}

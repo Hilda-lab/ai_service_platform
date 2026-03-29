@@ -71,7 +71,7 @@ func main() {
 	visionHandler := handler.NewVisionHandler(visionSvc)
 	chatSvc := chatservice.NewService(chatRepo, redisClient, openaiClient, ollamaClient, ragSvc, cfg.AIProvider, cfg.OpenAIModel, cfg.OllamaModel)
 	chatHandler := handler.NewChatHandler(chatSvc)
-	mcpHub := mcpservice.NewHub(chatSvc)
+	mcpHub := mcpservice.NewHub(chatSvc, ragSvc)
 	mcpHandler := handler.NewMCPHandler(mcpHub)
 	speechSvc := speechservice.NewService(
 		func(ctx context.Context, req speechservice.TTSRequest) (*speechservice.TTSResult, error) {
