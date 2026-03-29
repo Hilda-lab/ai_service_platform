@@ -8,7 +8,7 @@ jwt:
   expire_hours: 72
 
 mysql:
-  dsn: user:password@tcp(127.0.0.1:3306)/ai_platform?charset=utf8mb4&parseTime=True&loc=Local
+  dsn: ai_user:ai_pass@tcp(127.0.0.1:3307)/ai_platform?charset=utf8mb4&parseTime=True&loc=Local
 
 redis:
   addr: 127.0.0.1:6379

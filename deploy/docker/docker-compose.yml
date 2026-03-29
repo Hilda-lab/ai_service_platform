@@ -9,7 +9,7 @@ services:
       MYSQL_USER: ai_user
       MYSQL_PASSWORD: ai_pass
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
 

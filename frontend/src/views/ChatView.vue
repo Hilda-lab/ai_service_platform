@@ -31,7 +31,6 @@
         <div style="display: flex; gap: 8px; margin-bottom: 8px">
           <select v-model="provider" :disabled="loading">
             <option value="openai">OpenAI Relay</option>
-            <option value="ollama">Ollama</option>
           </select>
           <input v-model="model" :disabled="loading" placeholder="模型名，例如 gpt-5.1" style="flex: 1" />
           <label>
@@ -71,7 +70,7 @@ const email = ref('')
 const sessions = ref<ChatSession[]>([])
 const messages = ref<Array<{ role: 'user' | 'assistant'; content: string }>>([])
 const currentSessionId = ref<number | undefined>()
-const provider = ref<'openai' | 'ollama'>('openai')
+const provider = ref<'openai'>('openai')
 const model = ref('gpt-5.1')
 const useStream = ref(true)
 const useRag = ref(false)

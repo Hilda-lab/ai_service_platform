@@ -23,7 +23,7 @@ export type ChatMessage = {
 
 export type CompletionPayload = {
   session_id?: number
-  provider: 'openai' | 'ollama'
+  provider: 'openai'
   model: string
   message: string
   use_rag?: boolean

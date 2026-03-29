@@ -41,7 +41,7 @@ func Load() Config {
 		HTTPPort:       getEnv("HTTP_PORT", "8080"),
 		JWTSecret:      getEnv("JWT_SECRET", "replace-with-strong-secret"),
 		JWTExpireHours: getEnvInt("JWT_EXPIRE_HOURS", 72),
-		MySQLDSN:       getEnv("MYSQL_DSN", "user:password@tcp(127.0.0.1:3306)/ai_platform?charset=utf8mb4&parseTime=True&loc=Local"),
+		MySQLDSN:       getEnv("MYSQL_DSN", "ai_user:ai_pass@tcp(127.0.0.1:3307)/ai_platform?charset=utf8mb4&parseTime=True&loc=Local"),
 		RedisAddr:      getEnv("REDIS_ADDR", "127.0.0.1:6379"),
 		RedisPassword:  getEnv("REDIS_PASSWORD", ""),
 		RedisDB:        getEnvInt("REDIS_DB", 0),

@@ -20,9 +20,14 @@ import (
 	ragservice "ai-service-platform/backend/internal/service/rag"
 	speechservice "ai-service-platform/backend/internal/service/speech"
 	visionservice "ai-service-platform/backend/internal/service/vision"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Printf(".env not loaded, fallback to system env: %v", err)
+	}
+
 	cfg := config.Load()
 
 	db, err := mysql.NewClient(cfg.MySQLDSN)
@@ -36,7 +41,8 @@ func main() {
 
 	redisClient, err := redis.NewClient(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
 	if err != nil {
-		log.Fatalf("redis init failed: %v", err)
+		log.Printf("redis init failed, continue without redis: %v", err)
+		redisClient = nil
 	}
 
 	userRepo := mysql.NewUserRepository(db)
