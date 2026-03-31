@@ -22,10 +22,10 @@
       }"
       @click="fileInput?.click()"
     >
-      <input ref="fileInput" type="file" accept=".txt,.md" style="display: none" @change="onFileChange" />
+      <input ref="fileInput" type="file" accept=".txt,.md,.pdf,.docx,.xlsx" style="display: none" @change="onFileChange" />
       <div style="font-size: 32px; margin-bottom: 8px">📄</div>
       <h3 style="margin: 0">拖拽或点击上传文档</h3>
-      <p style="color: #666; margin: 8px 0 0 0">支持格式：纯文本 (.txt, .md)</p>
+      <p style="color: #666; margin: 8px 0 0 0">支持格式：文本 (.txt, .md)、PDF、Word (.docx)、Excel (.xlsx)</p>
     </section>
 
     <!-- 上传表单 -->
@@ -173,10 +173,10 @@ async function onDrop(e: DragEvent) {
   const files = e.dataTransfer?.files
   if (files && files.length > 0) {
     const file = files[0]
-    if (file.type === 'text/plain' || file.name.endsWith('.md') || file.name.endsWith('.txt')) {
+    if (isSupportedFileType(file)) {
       await readFile(file)
     } else {
-      error.value = '暂只支持纯文本文档 (.txt, .md)'
+      error.value = '不支持此文件格式，请上传文本、PDF、Word 或 Excel 文件'
     }
   }
 }
@@ -189,6 +189,53 @@ function onFileChange(e: Event) {
   }
 }
 
+function isSupportedFileType(file: File): boolean {
+  const name = file.name.toLowerCase()
+  const supportedExtensions = ['.txt', '.md', '.pdf', '.docx', '.xlsx']
+  return supportedExtensions.some(ext => name.endsWith(ext))
+}
+
+async function readTextFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const result = e.target?.result as string
+      console.log('FileReader onload - 读取长度:', result?.length)
+      if (result && result.includes('\ufffd')) {
+        console.warn('检测到乱码字符')
+        reject(new Error('文件编码不支持，请使用 UTF-8 编码的纯文本文件'))
+      } else {
+        resolve(result || '')
+      }
+    }
+    reader.onerror = () => {
+      console.error('FileReader error')
+      reject(new Error('读取文件出错'))
+    }
+    console.log('开始 readAsText，文件类型:', file.type)
+    reader.readAsText(file, 'UTF-8')
+  })
+}
+
+async function uploadAndParse(file: File): Promise<string> {
+  const token = getToken()
+  if (!token) throw new Error('未授权')
+  
+  const formData = new FormData()
+  formData.append('file', file)
+  
+  const response = await fetch('http://localhost:28080/api/v1/rag/parse-file', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData
+  })
+  
+  const json = (await response.json()) as { data?: { content: string }; message?: string }
+  if (!response.ok) throw new Error(json.message || `解析文件失败: ${response.status}`)
+  if (!json.data?.content) throw new Error('解析结果为空')
+  return json.data.content
+}
+
 async function readFile(file: File) {
   error.value = ''
   console.log('开始读取文件:', file.name)
@@ -199,32 +246,21 @@ async function readFile(file: File) {
     return
   }
   try {
-    // 简单地使用 FileReader 读取文本
-    const text = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const result = e.target?.result as string
-        console.log('FileReader onload - 读取长度:', result?.length)
-        // 检查是否有乱码字符
-        if (result && result.includes('\ufffd')) {
-          console.warn('检测到乱码字符')
-          reject(new Error('文件编码不支持，请使用 UTF-8 编码的纯文本文件'))
-        } else {
-          resolve(result || '')
-        }
-      }
-      reader.onerror = () => {
-        console.error('FileReader error')
-        reject(new Error('读取文件出错'))
-      }
-      console.log('开始 readAsText')
-      reader.readAsText(file, 'UTF-8')
-    })
-
+    const fileName = file.name
+    let text = ''
+    
+    if (fileName.endsWith('.pdf') || fileName.endsWith('.docx') || fileName.endsWith('.xlsx')) {
+      // 对于二进制文件，发送给后端处理
+      text = await uploadAndParse(file)
+    } else {
+      // 对于文本文件，在客户端读取
+      text = await readTextFile(file)
+    }
+    
     console.log('文件读取成功，长度:', text.length)
-    documentTitle.value = file.name.replace(/\.(txt|md)$/, '')
+    documentTitle.value = fileName.replace(/\.(txt|md|pdf|docx|xlsx)$/i, '')
     documentContent.value = text
-    successMessage.value = `已读取文件：${file.name}`
+    successMessage.value = `已读取文件：${fileName}`
     setTimeout(() => {
       successMessage.value = ''
     }, 3000)

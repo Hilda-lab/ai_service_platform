@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"ai-service-platform/backend/internal/domain/entity"
+	fileparser "ai-service-platform/backend/internal/infrastructure/file"
 	ragservice "ai-service-platform/backend/internal/service/rag"
 )
 
@@ -148,4 +149,51 @@ func (h *RAGHandler) GetPerformanceStats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": stats})
+}
+
+func (h *RAGHandler) ParseFile(c *gin.Context) {
+	_, ok := getUserIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+
+	// 限制上传大小 50MB
+	c.Request.ParseMultipartForm(50 << 20)
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "file is required"})
+		return
+	}
+
+	// 打开文件
+	src, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "failed to open file"})
+		return
+	}
+	defer src.Close()
+
+	// 读取文件内容
+	buf := make([]byte, file.Size)
+	_, err = src.Read(buf)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to read file"})
+		return
+	}
+
+	// 解析文件
+	fileParser := fileparser.NewFileParser()
+	content, err := fileParser.Parse(file.Filename, buf)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": fmt.Sprintf("parse file failed: %v", err)})
+		return
+	}
+
+	if len(content) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "no text content found in file"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"content": content}})
 }
