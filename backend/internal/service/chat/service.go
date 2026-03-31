@@ -53,10 +53,10 @@ type ChatRequest struct {
 }
 
 type ChatResult struct {
-	SessionID uint
-	Provider  string
-	Model     string
-	Reply     string
+	SessionID uint `json:"session_id"`
+	Provider  string `json:"provider"`
+	Model     string `json:"model"`
+	Reply     string `json:"reply"`
 	Usage     *struct {
 		PromptTokens     int `json:"prompt_tokens"`
 		CompletionTokens int `json:"completion_tokens"`
@@ -538,117 +538,50 @@ func (s *Service) generateReplyWithTools(ctx context.Context, userID uint, model
 		reqMessages = append(reqMessages, openaiclient.ChatMessage{Role: message.Role, Content: message.Content})
 	}
 
-	// 获取可用工具（如果配置了 toolProvider）
+	// 暂时禁用工具调用以避免 OpenAI Relay 的不兼容问题
+	// TODO: 修复 OpenAI Relay 对工具调用格式的支持
 	var tools []openaiclient.ToolDefinition
-	if s.toolProvider != nil {
-		toolInfos, err := s.toolProvider.GetTools(ctx, userID)
-		if err == nil && len(toolInfos) > 0 {
-			tools = make([]openaiclient.ToolDefinition, 0, len(toolInfos))
-			for _, info := range toolInfos {
-				var toolDef openaiclient.ToolDefinition
-				toolDef.Type = "function"
-				toolDef.Function.Name, _ = info["name"].(string)
-				toolDef.Function.Description, _ = info["description"].(string)
-				if params, ok := info["parameters"].(map[string]interface{}); ok {
-					toolDef.Function.Parameters = params
-				}
-				tools = append(tools, toolDef)
-			}
-		}
+	// if s.toolProvider != nil {
+	// 	...
+	// }
+
+	req := openaiclient.ChatCompletionRequest{
+		Model:    model,
+		Messages: reqMessages,
+		Tools:    tools,
 	}
 
-	// 最多5次迭代以防止无限循环
+	resp, err := s.openai.ChatCompletions(ctx, req)
+	if err != nil {
+		fmt.Printf("[ERROR] OpenAI ChatCompletions failed: %v\n", err)
+		return "", nil, err
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", nil, errors.New("empty response")
+	}
+
+	choice := resp.Choices[0]
+
 	var lastUsage *struct {
 		PromptTokens     int
 		CompletionTokens int
 		TotalTokens      int
 	}
-
-	for i := 0; i < 5; i++ {
-		req := openaiclient.ChatCompletionRequest{
-			Model:    model,
-			Messages: reqMessages,
-			Tools:    tools,
+	if resp.Usage != nil {
+		lastUsage = &struct {
+			PromptTokens     int
+			CompletionTokens int
+			TotalTokens      int
+		}{
+			PromptTokens:     resp.Usage.PromptTokens,
+			CompletionTokens: resp.Usage.CompletionTokens,
+			TotalTokens:      resp.Usage.TotalTokens,
 		}
-
-		// 调试输出：记录工具信息
-		if len(tools) > 0 {
-			fmt.Printf("[DEBUG] Iteration %d: Sending %d tools to AI\n", i, len(tools))
-			for _, t := range tools {
-				fmt.Printf("  - Tool: %s\n", t.Function.Name)
-			}
-		}
-
-		resp, err := s.openai.ChatCompletions(ctx, req)
-		if err != nil {
-			fmt.Printf("[ERROR] Iteration %d: OpenAI ChatCompletions failed: %v\n", i, err)
-			return "", nil, err
-		}
-
-		if len(resp.Choices) == 0 {
-			return "", nil, errors.New("empty response")
-		}
-
-		choice := resp.Choices[0]
-
-		// 保存 usage 信息（最后一次重要）
-		if resp.Usage != nil {
-			lastUsage = &struct {
-				PromptTokens     int
-				CompletionTokens int
-				TotalTokens      int
-			}{
-				PromptTokens:     resp.Usage.PromptTokens,
-				CompletionTokens: resp.Usage.CompletionTokens,
-				TotalTokens:      resp.Usage.TotalTokens,
-			}
-		}
-
-		// 调试输出：记录 AI 的响应
-		fmt.Printf("[DEBUG] Iteration %d: FinishReason=%s, ToolCalls=%d, Usage=%+v\n", i, choice.FinishReason, len(choice.Message.ToolCalls), resp.Usage)
-
-		// 检查是否需要调用工具
-		if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) > 0 {
-			// 添加助手响应到消息历史
-			reqMessages = append(reqMessages, openaiclient.ChatMessage{
-				Role:      "assistant",
-				ToolCalls: choice.Message.ToolCalls,
-			})
-
-			// 执行所有工具调用
-			for _, toolCall := range choice.Message.ToolCalls {
-				// 解析工具参数
-				var args map[string]interface{}
-				if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
-					args = map[string]interface{}{}
-				}
-				argsJSON, _ := json.Marshal(args)
-
-				// 执行工具
-				result, err := s.toolProvider.ExecuteTool(ctx, userID, toolCall.Function.Name, argsJSON)
-				if err != nil {
-					result = map[string]interface{}{"error": err.Error()}
-				}
-
-				// 将工具结果添加到消息历史
-				resultJSON, _ := json.Marshal(result)
-				reqMessages = append(reqMessages, openaiclient.ChatMessage{
-					Role:       "user",
-					ToolCallID: toolCall.ID,
-					Name:       toolCall.Function.Name,
-					Content:    string(resultJSON),
-				})
-			}
-
-			// 继续循环，让 AI 生成最终响应
-			continue
-		}
-
-		// 获得文本响应
-		return choice.Message.Content, lastUsage, nil
 	}
 
-	return "", lastUsage, errors.New("too many tool calls, aborting")
+	// 获得文本响应
+	return choice.Message.Content, lastUsage, nil
 }
 
 func (s *Service) streamOpenAI(ctx context.Context, model string, messages []contextMessage, onChunk func(chunk string) error) error {
