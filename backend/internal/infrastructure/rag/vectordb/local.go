@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -39,6 +40,23 @@ func UnmarshalVector(data string) ([]float64, error) {
 	var vector []float64
 	if err := json.Unmarshal([]byte(data), &vector); err != nil {
 		return nil, err
+	}
+	return vector, nil
+}
+
+// UnmarshalVectorFromString 从逗号分隔格式的字符串反序列化向量
+func UnmarshalVectorFromString(data string) ([]float64, error) {
+	if data == "" {
+		return []float64{}, nil
+	}
+	parts := strings.Split(data, ",")
+	vector := make([]float64, 0, len(parts))
+	for _, part := range parts {
+		v, err := strconv.ParseFloat(strings.TrimSpace(part), 64)
+		if err != nil {
+			continue
+		}
+		vector = append(vector, v)
 	}
 	return vector, nil
 }

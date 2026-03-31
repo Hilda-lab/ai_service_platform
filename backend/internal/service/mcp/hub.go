@@ -22,9 +22,9 @@ var weatherHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
 // Tool 定义
 type Tool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters,omitempty"`
+	Name        string                                                      `json:"name"`
+	Description string                                                      `json:"description"`
+	Parameters  map[string]interface{}                                      `json:"parameters,omitempty"`
 	Execute     func(context.Context, json.RawMessage) (interface{}, error) `json:"-"`
 }
 
@@ -178,8 +178,8 @@ func (h *Hub) registerTools() {
 			json.Unmarshal(params, &p)
 
 			info := map[string]interface{}{
-				"os":        runtime.GOOS,
-				"arch":      runtime.GOARCH,
+				"os":         runtime.GOOS,
+				"arch":       runtime.GOARCH,
 				"go_version": runtime.Version(),
 			}
 
@@ -281,12 +281,12 @@ func fetchWeather(ctx context.Context, params json.RawMessage) (interface{}, err
 			"latitude":  lat,
 			"longitude": lon,
 		},
-		"timezone":          weatherResp.Timezone,
-		"observation_time":  weatherResp.CurrentWeather.Time,
-		"temperature_c":     weatherResp.CurrentWeather.Temperature,
-		"wind_speed_kmh":    weatherResp.CurrentWeather.Windspeed,
+		"timezone":           weatherResp.Timezone,
+		"observation_time":   weatherResp.CurrentWeather.Time,
+		"temperature_c":      weatherResp.CurrentWeather.Temperature,
+		"wind_speed_kmh":     weatherResp.CurrentWeather.Windspeed,
 		"wind_direction_deg": weatherResp.CurrentWeather.Winddir,
-		"weather_code":      weatherResp.CurrentWeather.WeatherCode,
+		"weather_code":       weatherResp.CurrentWeather.WeatherCode,
 	}, nil
 }
 
@@ -405,7 +405,7 @@ func (c *Client) handleRequest(ctx context.Context, req rpcRequest) {
 	switch req.Method {
 	case "ping":
 		c.sendResponse(rpcResponse{ID: req.ID, Result: map[string]interface{}{"pong": true, "ts": time.Now().Unix()}})
-	
+
 	// 工具相关方法
 	case "tool.list":
 		// 返回可用工具列表
@@ -421,7 +421,7 @@ func (c *Client) handleRequest(ctx context.Context, req rpcRequest) {
 			"tools": toolList,
 			"count": len(toolList),
 		}})
-	
+
 	case "tool.call":
 		// 执行指定工具
 		var params toolCallParams
@@ -480,7 +480,7 @@ func (c *Client) handleRequest(ctx context.Context, req rpcRequest) {
 		}
 
 		c.sendResponse(rpcResponse{ID: req.ID, Result: result})
-	
+
 	// 聊天相关方法
 	case "chat.send":
 		var params chatSendParams

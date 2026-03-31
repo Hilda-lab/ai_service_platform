@@ -11,11 +11,11 @@ import (
 )
 
 type Handlers struct {
-	Auth *handler.AuthHandler
-	Chat *handler.ChatHandler
-	RAG  *handler.RAGHandler
+	Auth   *handler.AuthHandler
+	Chat   *handler.ChatHandler
+	RAG    *handler.RAGHandler
 	Vision *handler.VisionHandler
-	MCP *handler.MCPHandler
+	MCP    *handler.MCPHandler
 	Speech *handler.SpeechHandler
 }
 

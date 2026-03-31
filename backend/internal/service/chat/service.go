@@ -57,6 +57,11 @@ type ChatResult struct {
 	Provider  string
 	Model     string
 	Reply     string
+	Usage     *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage,omitempty"`
 }
 
 type contextMessage struct {
@@ -160,7 +165,7 @@ func (s *Service) Complete(ctx context.Context, req ChatRequest) (*ChatResult, e
 		return &ChatResult{SessionID: session.ID, Provider: provider, Model: model, Reply: directReply}, nil
 	}
 
-	reply, err := s.generateReply(ctx, req.UserID, provider, model, history)
+	reply, usage, err := s.generateReply(ctx, req.UserID, provider, model, history)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +185,19 @@ func (s *Service) Complete(ctx context.Context, req ChatRequest) (*ChatResult, e
 		return nil, err
 	}
 
-	return &ChatResult{SessionID: session.ID, Provider: provider, Model: model, Reply: reply}, nil
+	result := &ChatResult{SessionID: session.ID, Provider: provider, Model: model, Reply: reply}
+	if usage != nil {
+		result.Usage = &struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		}{
+			PromptTokens:     usage.PromptTokens,
+			CompletionTokens: usage.CompletionTokens,
+			TotalTokens:      usage.TotalTokens,
+		}
+	}
+	return result, nil
 }
 
 func (s *Service) Stream(ctx context.Context, req ChatRequest, onChunk func(chunk string) error) (*ChatResult, error) {
@@ -372,7 +389,11 @@ func (s *Service) refreshCache(ctx context.Context, userID, sessionID uint) erro
 	return s.redis.Set(ctx, s.contextKey(sessionID), string(payload), 0).Err()
 }
 
-func (s *Service) generateReply(ctx context.Context, userID uint, provider, model string, messages []contextMessage) (string, error) {
+func (s *Service) generateReply(ctx context.Context, userID uint, provider, model string, messages []contextMessage) (string, *struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}, error) {
 	if provider == "openai" {
 		return s.generateReplyWithTools(ctx, userID, model, messages)
 	}
@@ -384,12 +405,12 @@ func (s *Service) generateReply(ctx context.Context, userID uint, provider, mode
 		}
 		resp, err := s.ollama.Chat(ctx, ollamaclient.ChatRequest{Model: model, Messages: reqMessages})
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
-		return resp.Message.Content, nil
+		return resp.Message.Content, nil, nil
 	}
 
-	return "", fmt.Errorf("unsupported provider: %s", provider)
+	return "", nil, fmt.Errorf("unsupported provider: %s", provider)
 }
 
 func (s *Service) tryDirectToolInvocation(ctx context.Context, userID uint, userContent string) (string, bool, error) {
@@ -398,34 +419,51 @@ func (s *Service) tryDirectToolInvocation(ctx context.Context, userID uint, user
 	}
 
 	normalized := strings.ToLower(strings.TrimSpace(userContent))
-	if !strings.Contains(userContent, "调用") && !strings.Contains(normalized, "call ") {
-		return "", false, nil
-	}
 
 	toolName := ""
 	args := map[string]interface{}{}
 
-	switch {
-	case strings.Contains(normalized, "get_datetime"):
-		toolName = "get_datetime"
-		if strings.Contains(normalized, "asia/shanghai") || strings.Contains(userContent, "北京时间") {
+	manualCallMode := strings.Contains(userContent, "调用") || strings.Contains(normalized, "call ")
+
+	if !manualCallMode {
+		switch detectNaturalToolIntent(normalized, userContent) {
+		case "get_datetime":
+			toolName = "get_datetime"
 			args["timezone"] = "Asia/Shanghai"
-		}
-		if _, ok := args["timezone"]; !ok {
+		case "query_weather":
+			toolName = "query_weather"
 			args["timezone"] = "Asia/Shanghai"
+			args["city"] = detectCity(userContent)
+		case "query_system_info":
+			toolName = "query_system_info"
+		default:
+			return "", false, nil
 		}
-	case strings.Contains(normalized, "query_weather"):
-		toolName = "query_weather"
-		args["timezone"] = "Asia/Shanghai"
-		args["city"] = detectCity(userContent)
-	case strings.Contains(normalized, "query_system_info"):
-		toolName = "query_system_info"
-	case strings.Contains(normalized, "query_rag"):
-		toolName = "query_rag"
-		args["query"] = userContent
-		args["top_k"] = 3
-	default:
-		return "", false, nil
+	}
+
+	if manualCallMode {
+		switch {
+		case strings.Contains(normalized, "get_datetime"):
+			toolName = "get_datetime"
+			if strings.Contains(normalized, "asia/shanghai") || strings.Contains(userContent, "北京时间") {
+				args["timezone"] = "Asia/Shanghai"
+			}
+			if _, ok := args["timezone"]; !ok {
+				args["timezone"] = "Asia/Shanghai"
+			}
+		case strings.Contains(normalized, "query_weather"):
+			toolName = "query_weather"
+			args["timezone"] = "Asia/Shanghai"
+			args["city"] = detectCity(userContent)
+		case strings.Contains(normalized, "query_system_info"):
+			toolName = "query_system_info"
+		case strings.Contains(normalized, "query_rag"):
+			toolName = "query_rag"
+			args["query"] = userContent
+			args["top_k"] = 3
+		default:
+			return "", false, nil
+		}
 	}
 
 	argsJSON, err := json.Marshal(args)
@@ -464,7 +502,36 @@ func detectCity(text string) string {
 	}
 }
 
-func (s *Service) generateReplyWithTools(ctx context.Context, userID uint, model string, messages []contextMessage) (string, error) {
+func detectNaturalToolIntent(normalized, original string) string {
+	timeHints := []string{"现在几点", "现在几", "当前时间", "北京时间", "几点了", "what time", "current time"}
+	for _, hint := range timeHints {
+		if strings.Contains(normalized, strings.ToLower(hint)) || strings.Contains(original, hint) {
+			return "get_datetime"
+		}
+	}
+
+	weatherHints := []string{"天气", "气温", "温度", "会下雨", "weather", "forecast"}
+	for _, hint := range weatherHints {
+		if strings.Contains(normalized, strings.ToLower(hint)) || strings.Contains(original, hint) {
+			return "query_weather"
+		}
+	}
+
+	systemHints := []string{"系统信息", "go版本", "go version", "操作系统", "hostname"}
+	for _, hint := range systemHints {
+		if strings.Contains(normalized, strings.ToLower(hint)) || strings.Contains(original, hint) {
+			return "query_system_info"
+		}
+	}
+
+	return ""
+}
+
+func (s *Service) generateReplyWithTools(ctx context.Context, userID uint, model string, messages []contextMessage) (string, *struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}, error) {
 	// 转换消息格式
 	reqMessages := make([]openaiclient.ChatMessage, 0, len(messages))
 	for _, message := range messages {
@@ -491,13 +558,19 @@ func (s *Service) generateReplyWithTools(ctx context.Context, userID uint, model
 	}
 
 	// 最多5次迭代以防止无限循环
+	var lastUsage *struct {
+		PromptTokens     int
+		CompletionTokens int
+		TotalTokens      int
+	}
+
 	for i := 0; i < 5; i++ {
 		req := openaiclient.ChatCompletionRequest{
 			Model:    model,
 			Messages: reqMessages,
 			Tools:    tools,
 		}
-		
+
 		// 调试输出：记录工具信息
 		if len(tools) > 0 {
 			fmt.Printf("[DEBUG] Iteration %d: Sending %d tools to AI\n", i, len(tools))
@@ -505,20 +578,34 @@ func (s *Service) generateReplyWithTools(ctx context.Context, userID uint, model
 				fmt.Printf("  - Tool: %s\n", t.Function.Name)
 			}
 		}
-		
+
 		resp, err := s.openai.ChatCompletions(ctx, req)
 		if err != nil {
-			return "", err
+			fmt.Printf("[ERROR] Iteration %d: OpenAI ChatCompletions failed: %v\n", i, err)
+			return "", nil, err
 		}
 
 		if len(resp.Choices) == 0 {
-			return "", errors.New("empty response")
+			return "", nil, errors.New("empty response")
 		}
 
 		choice := resp.Choices[0]
 
+		// 保存 usage 信息（最后一次重要）
+		if resp.Usage != nil {
+			lastUsage = &struct {
+				PromptTokens     int
+				CompletionTokens int
+				TotalTokens      int
+			}{
+				PromptTokens:     resp.Usage.PromptTokens,
+				CompletionTokens: resp.Usage.CompletionTokens,
+				TotalTokens:      resp.Usage.TotalTokens,
+			}
+		}
+
 		// 调试输出：记录 AI 的响应
-		fmt.Printf("[DEBUG] Iteration %d: FinishReason=%s, ToolCalls=%d\n", i, choice.FinishReason, len(choice.Message.ToolCalls))
+		fmt.Printf("[DEBUG] Iteration %d: FinishReason=%s, ToolCalls=%d, Usage=%+v\n", i, choice.FinishReason, len(choice.Message.ToolCalls), resp.Usage)
 
 		// 检查是否需要调用工具
 		if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) > 0 {
@@ -558,10 +645,10 @@ func (s *Service) generateReplyWithTools(ctx context.Context, userID uint, model
 		}
 
 		// 获得文本响应
-		return choice.Message.Content, nil
+		return choice.Message.Content, lastUsage, nil
 	}
 
-	return "", errors.New("too many tool calls, aborting")
+	return "", lastUsage, errors.New("too many tool calls, aborting")
 }
 
 func (s *Service) streamOpenAI(ctx context.Context, model string, messages []contextMessage, onChunk func(chunk string) error) error {

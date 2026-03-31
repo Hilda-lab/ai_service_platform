@@ -50,3 +50,11 @@ func (r *RAGRepository) ListChunks(ctx context.Context, userID uint, limit int) 
 	}
 	return chunks, nil
 }
+
+func (r *RAGRepository) GetChunksByDocumentID(ctx context.Context, documentID uint) ([]entity.RAGChunk, error) {
+	var chunks []entity.RAGChunk
+	if err := r.db.WithContext(ctx).Where("document_id = ?", documentID).Find(&chunks).Error; err != nil {
+		return nil, err
+	}
+	return chunks, nil
+}

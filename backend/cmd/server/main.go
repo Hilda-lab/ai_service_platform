@@ -20,6 +20,7 @@ import (
 	ragservice "ai-service-platform/backend/internal/service/rag"
 	speechservice "ai-service-platform/backend/internal/service/speech"
 	visionservice "ai-service-platform/backend/internal/service/vision"
+
 	"github.com/joho/godotenv"
 )
 
@@ -52,7 +53,7 @@ func main() {
 	chatRepo := mysql.NewChatRepository(db)
 	ragRepo := mysql.NewRAGRepository(db)
 	visionRepo := mysql.NewVisionRepository(db)
-	ragSvc := ragservice.NewService(ragRepo)
+	ragSvc := ragservice.NewServiceWithRedis(ragRepo, redisClient)
 	ragHandler := handler.NewRAGHandler(ragSvc)
 
 	openaiClient := openaiclient.NewClient(cfg.OpenAIBaseURL, cfg.OpenAIAPIKey)

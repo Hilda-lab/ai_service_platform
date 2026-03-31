@@ -3,6 +3,7 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
       <h1 style="margin: 0">AI 聊天</h1>
       <div>
+        <button style="margin-right: 8px" @click="router.push('/rag')">RAG文档</button>
         <button style="margin-right: 8px" @click="router.push('/vision')">图像识别</button>
         <button style="margin-right: 8px" @click="router.push('/speech')">语音能力</button>
         <button style="margin-right: 8px" @click="router.push('/mcp')">MCP工具面板</button>
@@ -33,7 +34,7 @@
           <select v-model="provider" :disabled="loading">
             <option value="openai">OpenAI Relay</option>
           </select>
-          <input v-model="model" :disabled="loading" placeholder="模型名，例如 gpt-5.1" style="flex: 1" />
+          <input v-model="model" :disabled="true" placeholder="模型名，例如 gpt-5.1" style="flex: 1; background: #f5f5f5; cursor: not-allowed" title="使用配置的默认模型，暂不支持修改" />
           <label>
             <input v-model="useStream" type="checkbox" :disabled="loading" /> 流式
           </label>

@@ -4,6 +4,7 @@ import ChatView from '../views/ChatView.vue'
 import VisionView from '../views/VisionView.vue'
 import SpeechView from '../views/SpeechView.vue'
 import MCPToolsView from '../views/MCPToolsView.vue'
+import RAGView from '../views/RAGView.vue'
 import { getToken } from '../utils/auth'
 
 const router = createRouter({
@@ -15,12 +16,13 @@ const router = createRouter({
     { path: '/vision', name: 'vision', component: VisionView },
     { path: '/speech', name: 'speech', component: SpeechView },
     { path: '/mcp', name: 'mcp', component: MCPToolsView },
+    { path: '/rag', name: 'rag', component: RAGView },
   ],
 })
 
 router.beforeEach((to) => {
   const token = getToken()
-  if ((to.path === '/chat' || to.path === '/vision' || to.path === '/speech' || to.path === '/mcp') && !token) {
+  if ((to.path === '/chat' || to.path === '/vision' || to.path === '/speech' || to.path === '/mcp' || to.path === '/rag') && !token) {
     return '/login'
   }
   if (to.path === '/login' && token) {

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -84,7 +85,9 @@ func (h *ChatHandler) Completions(c *gin.Context) {
 		UseRAG:    req.UseRAG,
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		// 记录详细错误到日志
+		log.Printf("[CHAT] Complete error for user %d: %v", userID, err)
+		c.JSON(http.StatusBadRequest, gin.H{"message": "chat complete failed", "error": err.Error()})
 		return
 	}
 
@@ -136,6 +139,7 @@ func (h *ChatHandler) CompletionsStream(c *gin.Context) {
 		"session_id": result.SessionID,
 		"provider":   result.Provider,
 		"model":      result.Model,
+		"usage":      result.Usage,
 	})
 	_, _ = c.Writer.Write(append([]byte("data: "), append(donePayload, []byte("\n\n")...)...))
 	c.Writer.Flush()

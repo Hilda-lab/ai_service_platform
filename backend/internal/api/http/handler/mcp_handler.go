@@ -12,14 +12,14 @@ import (
 )
 
 type MCPHandler struct {
-	hub      *mcpservice.Hub
+	hub       *mcpservice.Hub
 	jwtSecret string
-	upgrader websocket.Upgrader
+	upgrader  websocket.Upgrader
 }
 
 func NewMCPHandler(hub *mcpservice.Hub, jwtSecret string) *MCPHandler {
 	return &MCPHandler{
-		hub: hub,
+		hub:       hub,
 		jwtSecret: jwtSecret,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,

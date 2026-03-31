@@ -19,11 +19,11 @@ type Client struct {
 }
 
 type ChatMessage struct {
-	Role       string       `json:"role"`
-	Content    string       `json:"content"`
-	ToolCallID string       `json:"tool_call_id,omitempty"`
-	Name       string       `json:"name,omitempty"`
-	ToolCalls  []ToolCall   `json:"tool_calls,omitempty"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+	Name       string     `json:"name,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 }
 
 type ToolCall struct {
@@ -33,8 +33,8 @@ type ToolCall struct {
 }
 
 type ToolDefinition struct {
-	Type       string                 `json:"type"`
-	Function   ToolFunction           `json:"function"`
+	Type     string       `json:"type"`
+	Function ToolFunction `json:"function"`
 }
 
 type ToolFunction struct {
@@ -61,9 +61,14 @@ type ChatChoice struct {
 }
 
 type ChatCompletionResponse struct {
-	ID      string        `json:"id"`
-	Model   string        `json:"model"`
-	Choices []ChatChoice  `json:"choices"`
+	ID      string       `json:"id"`
+	Model   string       `json:"model"`
+	Choices []ChatChoice `json:"choices"`
+	Usage   *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage,omitempty"`
 }
 
 func NewClient(baseURL, apiKey string) *Client {

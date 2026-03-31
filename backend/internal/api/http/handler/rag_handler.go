@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"ai-service-platform/backend/internal/domain/entity"
 	ragservice "ai-service-platform/backend/internal/service/rag"
 )
 
@@ -49,6 +50,10 @@ func (h *RAGHandler) Ingest(c *gin.Context) {
 		return
 	}
 
+	if chunks == nil {
+		chunks = []entity.RAGChunk{}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"document": doc, "chunks": chunks}})
 }
 
@@ -59,7 +64,7 @@ func (h *RAGHandler) ListDocuments(c *gin.Context) {
 		return
 	}
 
-	docs, err := h.ragService.ListDocuments(c.Request.Context(), userID)
+	docs, err := h.ragService.ListDocumentsWithStats(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "list documents failed"})
 		return
@@ -81,11 +86,11 @@ func (h *RAGHandler) Retrieve(c *gin.Context) {
 		return
 	}
 
-	results, err := h.ragService.Retrieve(c.Request.Context(), userID, req.Query, req.TopK)
+	results, metrics, err := h.ragService.RetrieveWithMetrics(c.Request.Context(), userID, req.Query, req.TopK)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": results})
+	c.JSON(http.StatusOK, gin.H{"data": results, "metrics": metrics})
 }
