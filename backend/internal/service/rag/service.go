@@ -378,3 +378,33 @@ func cosine(a, b []float64) float64 {
 	}
 	return dot
 }
+
+func (s *Service) DeleteDocument(ctx context.Context, userID uint, documentID uint) error {
+	// Get document to verify ownership
+	doc, err := s.repo.GetDocumentByID(ctx, documentID)
+	if err != nil {
+		return err
+	}
+	if doc == nil {
+		return errors.New("document not found")
+	}
+	if doc.UserID != userID {
+		return errors.New("unauthorized: document does not belong to user")
+	}
+
+	// Delete from Redis vector store if available
+	if s.vectorStore != nil {
+		if err := s.vectorStore.DeleteDocument(ctx, userID, documentID); err != nil {
+			// Log the error but continue with MySQL deletion
+			// In production, you might want to handle this differently
+			fmt.Printf("warning: failed to delete vectors from Redis: %v\n", err)
+		}
+	}
+
+	// Delete from MySQL (chunks and document)
+	if err := s.repo.DeleteDocument(ctx, userID, documentID); err != nil {
+		return err
+	}
+
+	return nil
+}

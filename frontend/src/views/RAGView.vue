@@ -134,7 +134,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ingestDocument, listDocuments, type RAGDocument } from '../api/rag'
+import { ingestDocument, listDocuments, deleteDocument as deleteRAGDocument, type RAGDocument } from '../api/rag'
 import { getToken } from '../utils/auth'
 
 const router = useRouter()
@@ -288,12 +288,15 @@ async function deleteDocument(id: number) {
 
   deleting.value = id
   error.value = ''
+  successMessage.value = ''
 
   try {
-    // 后端暂未实现删除接口，这里是占位符
-    alert('删除功能即将推出')
-    // await deleteRAGDocument(token, id)
-    // loadDocuments()
+    await deleteRAGDocument(token, id)
+    successMessage.value = '文档已删除'
+    loadDocuments()
+    setTimeout(() => {
+      successMessage.value = ''
+    }, 3000)
   } catch (e) {
     error.value = '删除失败：' + (e instanceof Error ? e.message : '未知错误')
   } finally {

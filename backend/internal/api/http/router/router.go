@@ -57,6 +57,7 @@ func NewRouter(handlers Handlers, opts RouterOptions) *gin.Engine {
 		{
 			rag.POST("/documents", handlers.RAG.Ingest)
 			rag.GET("/documents", handlers.RAG.ListDocuments)
+			rag.DELETE("/documents/:id", handlers.RAG.DeleteDocument)
 			rag.POST("/retrieve", handlers.RAG.Retrieve)
 		}
 

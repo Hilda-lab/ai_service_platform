@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -93,4 +95,41 @@ func (h *RAGHandler) Retrieve(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": results, "metrics": metrics})
+}
+
+func (h *RAGHandler) DeleteDocument(c *gin.Context) {
+	userID, ok := getUserIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+
+	documentID := c.Param("id")
+	if documentID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "document id is required"})
+		return
+	}
+
+	// Parse documentID to uint
+	var id uint
+	if _, err := fmt.Sscanf(documentID, "%d", &id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid document id"})
+		return
+	}
+
+	// Delete the document (handles both MySQL and Redis)
+	if err := h.ragService.DeleteDocument(c.Request.Context(), userID, id); err != nil {
+		if err.Error() == "document not found" {
+			c.JSON(http.StatusNotFound, gin.H{"message": "document not found"})
+			return
+		}
+		if strings.Contains(err.Error(), "unauthorized") {
+			c.JSON(http.StatusForbidden, gin.H{"message": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "delete document failed", "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "document deleted successfully"})
 }

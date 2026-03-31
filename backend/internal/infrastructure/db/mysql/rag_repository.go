@@ -58,3 +58,24 @@ func (r *RAGRepository) GetChunksByDocumentID(ctx context.Context, documentID ui
 	}
 	return chunks, nil
 }
+
+func (r *RAGRepository) GetDocumentByID(ctx context.Context, documentID uint) (*entity.RAGDocument, error) {
+	var doc entity.RAGDocument
+	if err := r.db.WithContext(ctx).Where("id = ?", documentID).First(&doc).Error; err != nil {
+		return nil, err
+	}
+	return &doc, nil
+}
+
+func (r *RAGRepository) DeleteDocument(ctx context.Context, userID uint, documentID uint) error {
+	// First, get all chunks for this document to prepare for vector store cleanup
+	// Then delete chunks (they have foreign key to document)
+	if err := r.db.WithContext(ctx).Where("document_id = ? AND user_id = ?", documentID, userID).Delete(&entity.RAGChunk{}).Error; err != nil {
+		return err
+	}
+	// Finally delete the document itself
+	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", documentID, userID).Delete(&entity.RAGDocument{}).Error; err != nil {
+		return err
+	}
+	return nil
+}

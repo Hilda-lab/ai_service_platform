@@ -12,4 +12,6 @@ type RAGRepository interface {
 	ListDocuments(ctx context.Context, userID uint, limit int) ([]entity.RAGDocument, error)
 	ListChunks(ctx context.Context, userID uint, limit int) ([]entity.RAGChunk, error)
 	GetChunksByDocumentID(ctx context.Context, documentID uint) ([]entity.RAGChunk, error)
+	DeleteDocument(ctx context.Context, userID uint, documentID uint) error
+	GetDocumentByID(ctx context.Context, documentID uint) (*entity.RAGDocument, error)
 }

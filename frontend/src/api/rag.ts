@@ -82,3 +82,12 @@ export async function retrieveDocuments(
   if (!json.data) throw new Error('检索结果为空')
   return { results: json.data, metrics: json.metrics || {} as RetrieveMetrics }
 }
+
+export async function deleteDocument(token: string, documentID: number): Promise<void> {
+  const response = await fetch(`${BASE_URL}/documents/${documentID}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const json = (await response.json()) as { message?: string }
+  if (!response.ok) throw new Error(json.message || `HTTP ${response.status}`)
+}
