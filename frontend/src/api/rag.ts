@@ -38,6 +38,17 @@ export type RetrieveMetrics = {
   min_score_limit: number
 }
 
+export type PerformanceStats = {
+  total_documents: number
+  total_chunks: number
+  avg_ingest_time_ms: number
+  avg_search_time_ms: number
+  total_ingest_calls: number
+  total_search_calls: number
+  last_ingest_time_ms: number
+  last_search_time_ms: number
+}
+
 export async function ingestDocument(token: string, title: string, content: string): Promise<{ document: RAGDocument; chunks: RAGChunk[] }> {
   const response = await fetch(`${BASE_URL}/documents`, {
     method: 'POST',

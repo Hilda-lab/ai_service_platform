@@ -47,10 +47,10 @@
           v-model="documentContent"
           placeholder="文档内容将显示在此（最多 50KB）"
           :disabled="uploading"
-          rows="6"
-          style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-family: monospace; font-size: 12px"
+          rows="10"
+          style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-family: monospace; font-size: 12px; color: #333; background-color: #fff; line-height: 1.5"
         />
-        <span style="font-size: 12px; color: #666">{{ documentContent.length }} / 51200 字节</span>
+        <span style="font-size: 12px; color: #666; display: block; margin-top: 4px">{{ documentContent.length }} / 51200 字节</span>
       </div>
 
       <button
@@ -96,35 +96,75 @@
           style="{
             border: '1px solid #ddd',
             borderRadius: '8px',
-            padding: '16px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
+            overflow: 'hidden',
             backgroundColor: '#f9f9f9',
           }"
         >
-          <div style="flex: 1">
-            <h3 style="margin: 0 0 8px 0">{{ doc.title }}</h3>
-            <p style="margin: 0; font-size: 12px; color: #666">
-              分块数：{{ doc.chunk_count }} | 大小：{{ formatBytes(new Blob([doc.content]).size) }} | 上传时间：{{ formatDate(doc.created_at) }}
-            </p>
-          </div>
-          <button
-            @click="deleteDocument(doc.id)"
-            :disabled="deleting === doc.id"
+          <!-- 文档头部 -->
+          <div
             style="{
-              padding: '6px 12px',
-              backgroundColor: deleting === doc.id ? '#ccc' : '#ea4335',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: deleting === doc.id ? 'not-allowed' : 'pointer',
-              fontSize: '12px',
-              marginLeft: '12px',
+              padding: '16px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px',
             }"
           >
-            {{ deleting === doc.id ? '删除中...' : '删除' }}
-          </button>
+            <div style="flex: 1">
+              <h3 style="margin: 0 0 8px 0">{{ doc.title }}</h3>
+              <p style="margin: 0; font-size: 12px; color: #666">
+                分块数：{{ doc.chunk_count }} | 大小：{{ formatBytes(getContentSizeInBytes(doc.content)) }} | 上传时间：{{ formatDate(doc.created_at) }}
+              </p>
+            </div>
+            <!-- 按钮组 -->
+            <div style="display: flex; gap: 8px">
+              <button
+                @click="toggleViewDocument(doc.id)"
+                style="{
+                  padding: '6px 12px',
+                  backgroundColor: expandedDocId === doc.id ? '#1976d2' : '#0d652d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                }"
+              >
+                {{ expandedDocId === doc.id ? '隐藏内容' : '查看内容' }}
+              </button>
+              <button
+                @click="deleteDocument(doc.id)"
+                :disabled="deleting === doc.id"
+                style="{
+                  padding: '6px 12px',
+                  backgroundColor: deleting === doc.id ? '#ccc' : '#ea4335',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: deleting === doc.id ? 'not-allowed' : 'pointer',
+                  fontSize: '12px',
+                }"
+              >
+                {{ deleting === doc.id ? '删除中...' : '删除' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 展开的内容区域 -->
+          <div
+            v-if="expandedDocId === doc.id"
+            style="{
+              borderTop: '1px solid #ddd',
+              padding: '16px',
+              backgroundColor: '#fff',
+              maxHeight: '400px',
+              overflowY: 'auto',
+            }"
+          >
+            <div style="font-size: 12px; color: #333; whiteSpace: 'pre-wrap'; wordBreak: 'break-word'; fontFamily: 'monospace'">
+              {{ doc.content }}
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -148,6 +188,7 @@ const error = ref('')
 const successMessage = ref('')
 const documents = ref<RAGDocument[]>([])
 const loadingDocuments = ref(false)
+const expandedDocId = ref<number | null>(null)
 
 function ensureToken() {
   const token = getToken()
@@ -184,8 +225,10 @@ async function onDrop(e: DragEvent) {
 function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement
   if (input.files && input.files.length > 0) {
-    console.log('选中文件:', input.files[0].name, '大小:', input.files[0].size)
-    readFile(input.files[0])
+    const file = input.files[0]
+    console.log('选中文件:', file.name, '大小:', file.size, '类型:', file.type)
+    error.value = '' // 清空之前的错误
+    readFile(file)
   }
 }
 
@@ -224,50 +267,63 @@ async function uploadAndParse(file: File): Promise<string> {
   const formData = new FormData()
   formData.append('file', file)
   
-  const response = await fetch('http://localhost:28080/api/v1/rag/parse-file', {
+  console.log('上传二进制文件到后端:', file.name)
+  const response = await fetch('http://127.0.0.1:28080/api/v1/rag/parse-file', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}` },
     body: formData
   })
   
+  console.log('文件上传响应状态:', response.status)
   const json = (await response.json()) as { data?: { content: string }; message?: string }
-  if (!response.ok) throw new Error(json.message || `解析文件失败: ${response.status}`)
+  if (!response.ok) {
+    console.error('文件上传失败:', json.message)
+    throw new Error(json.message || `解析文件失败: ${response.status}`)
+  }
   if (!json.data?.content) throw new Error('解析结果为空')
+  console.log('文件解析成功，内容长度:', json.data.content.length)
   return json.data.content
 }
 
 async function readFile(file: File) {
   error.value = ''
-  console.log('开始读取文件:', file.name)
+  successMessage.value = ''
+  console.log('开始读取文件:', file.name, '类型:', file.type)
+  
   if (file.size > 52428800) {
     // 50MB limit
     error.value = '文件过大，请上传小于 50MB 的文件'
     console.warn('文件超过 50MB')
     return
   }
+  
   try {
     const fileName = file.name
     let text = ''
     
     if (fileName.endsWith('.pdf') || fileName.endsWith('.docx') || fileName.endsWith('.xlsx')) {
       // 对于二进制文件，发送给后端处理
+      successMessage.value = `正在处理 ${fileName}...`
+      console.log('切换为后端解析模式，文件:', fileName)
       text = await uploadAndParse(file)
     } else {
       // 对于文本文件，在客户端读取
+      console.log('切换为本地解析模式，文件:', fileName)
       text = await readTextFile(file)
     }
     
-    console.log('文件读取成功，长度:', text.length)
+    console.log('文件读取成功，长度:', text.length, '字节')
     documentTitle.value = fileName.replace(/\.(txt|md|pdf|docx|xlsx)$/i, '')
     documentContent.value = text
-    successMessage.value = `已读取文件：${fileName}`
+    successMessage.value = `✓ 已读取文件：${fileName}（${text.length} 字符）`
+    console.log('UI已更新，文档标题:', documentTitle.value)
     setTimeout(() => {
       successMessage.value = ''
     }, 3000)
   } catch (e) {
     const msg = e instanceof Error ? e.message : '未知错误'
-    console.error('读取文件出错:', msg)
-    error.value = '读取文件失败：' + msg
+    console.error('❌ 读取文件出错:', msg, '堆栈:', e)
+    error.value = '❌ 读取文件失败：' + msg
   }
 }
 
@@ -340,12 +396,30 @@ async function deleteDocument(id: number) {
   }
 }
 
+function toggleViewDocument(id: number) {
+  if (expandedDocId.value === id) {
+    expandedDocId.value = null
+  } else {
+    expandedDocId.value = id
+  }
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
+}
+
+function getContentSizeInBytes(content: string): number {
+  // 计算字符串的字节长度（UTF-8 编码）
+  try {
+    return new TextEncoder().encode(content).length
+  } catch {
+    // 如果失败，回退到字符长度
+    return content.length
+  }
 }
 
 function formatDate(dateStr: string): string {

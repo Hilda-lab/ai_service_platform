@@ -30,9 +30,6 @@ func ParsePDF(data []byte) (string, error) {
 	// 查找文本对象并提取字符串
 	content := string(data)
 	
-	// 移除 PDF 头尾标记
-	content = strings.TrimPrefix(content, "%PDF-")
-	
 	// 提取 BT...ET 之间的文本（基本的 PDF 文本流）
 	var result strings.Builder
 	inTextBlock := false
@@ -63,10 +60,43 @@ func ParsePDF(data []byte) (string, error) {
 	
 	finalText := result.String()
 	if strings.TrimSpace(finalText) == "" {
-		// 如果没有提取到文本，返回原始内容（过滤二进制数据后）
-		return filterBinaryContent(content), nil
+		// 如果没有提取到文本，尝试直接从字符串中提取可读文本
+		// 在 PDF 中，很多文本是以明文形式存储的
+		return extractReadableTextFromPDF(content), nil
 	}
 	return finalText, nil
+}
+
+// extractReadableTextFromPDF 从 PDF 中提取所有可读的文本片段
+func extractReadableTextFromPDF(content string) string {
+	var result strings.Builder
+	var current strings.Builder
+	
+	for _, r := range content {
+		// 保留可打印字符和空白
+		if (r >= 32 && r < 127) || r >= 128 || r == '\n' || r == '\r' || r == '\t' || r == ' ' {
+			current.WriteRune(r)
+		} else if current.Len() > 0 {
+			// 当遇到非打印字符时，如果累积的文本足够长，就加入结果
+			text := current.String()
+			// 避免 PDF 元数据过多，只保留长度 > 3 的文本
+			if len(strings.TrimSpace(text)) > 3 {
+				result.WriteString(text)
+				result.WriteString("\n")
+			}
+			current.Reset()
+		}
+	}
+	
+	// 处理最后的文本
+	if current.Len() > 0 {
+		text := current.String()
+		if len(strings.TrimSpace(text)) > 3 {
+			result.WriteString(text)
+		}
+	}
+	
+	return result.String()
 }
 
 // ParseDOCX 解析 DOCX 文件
@@ -262,10 +292,12 @@ func decodeTextString(s string) string {
 }
 
 func filterBinaryContent(content string) string {
-	// 移除控制字符和不可打印字符
+	// 移除控制字符（但保留所有 Unicode 字符、空格、换行等）
 	var result strings.Builder
 	for _, r := range content {
-		if r >= 32 && r < 127 || r == '\n' || r == '\r' || r == '\t' {
+		// 保留所有可打印字符和空白字符
+		// 只过滤控制字符 (< 32 的除了 \t \n \r)
+		if r >= 32 || r == '\t' || r == '\n' || r == '\r' {
 			result.WriteRune(r)
 		}
 	}
