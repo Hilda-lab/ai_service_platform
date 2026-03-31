@@ -106,17 +106,25 @@ func (s *Service) Ingest(ctx context.Context, req IngestRequest) (*entity.RAGDoc
 		return nil, nil, err
 	}
 
-	// 如果配置了 Redis，同时存储向量到 Redis
-	if s.vectorStore != nil {
+	// 如果配置了 Redis，批量存储向量到 Redis（使用 Pipeline 优化性能）
+	if s.vectorStore != nil && len(chunks) > 0 {
+		// 准备批量数据
+		chunkDataList := make([]redis.ChunkData, 0, len(chunks))
 		for _, chunk := range chunks {
 			vector, err := vectordb.UnmarshalVector(chunk.Embedding)
 			if err != nil {
-				// 如果反序列化失败，继续（这不应该发生）
+				// 如果反序列化失败，继续
 				continue
 			}
-			// 忽略 Redis 存储错误，MySQL 中已有数据
-			_ = s.vectorStore.StoreChunk(ctx, req.UserID, chunk.ID, chunk.DocumentID, chunk.Content, vector)
+			chunkDataList = append(chunkDataList, redis.ChunkData{
+				ChunkID:    chunk.ID,
+				DocumentID: chunk.DocumentID,
+				Content:    chunk.Content,
+				Vector:     vector,
+			})
 		}
+		// 使用 Pipeline 批量存储，忽略错误（MySQL 中已有数据）
+		_ = s.vectorStore.StoreChunksBatch(ctx, req.UserID, chunkDataList)
 	}
 
 	return doc, chunks, nil
@@ -392,9 +400,9 @@ func (s *Service) DeleteDocument(ctx context.Context, userID uint, documentID ui
 		return errors.New("unauthorized: document does not belong to user")
 	}
 
-	// Delete from Redis vector store if available
+	// Delete from Redis vector store if available (using Pipeline for optimization)
 	if s.vectorStore != nil {
-		if err := s.vectorStore.DeleteDocument(ctx, userID, documentID); err != nil {
+		if err := s.vectorStore.DeleteDocumentPipeline(ctx, userID, documentID); err != nil {
 			// Log the error but continue with MySQL deletion
 			// In production, you might want to handle this differently
 			fmt.Printf("warning: failed to delete vectors from Redis: %v\n", err)
