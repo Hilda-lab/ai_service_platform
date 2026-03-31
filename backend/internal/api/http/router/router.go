@@ -59,6 +59,7 @@ func NewRouter(handlers Handlers, opts RouterOptions) *gin.Engine {
 			rag.GET("/documents", handlers.RAG.ListDocuments)
 			rag.DELETE("/documents/:id", handlers.RAG.DeleteDocument)
 			rag.POST("/retrieve", handlers.RAG.Retrieve)
+			rag.GET("/stats", handlers.RAG.GetPerformanceStats)
 		}
 
 		vision := api.Group("/vision", middleware.JWTAuth(opts.JWTSecret))

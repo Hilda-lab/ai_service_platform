@@ -91,3 +91,14 @@ export async function deleteDocument(token: string, documentID: number): Promise
   const json = (await response.json()) as { message?: string }
   if (!response.ok) throw new Error(json.message || `HTTP ${response.status}`)
 }
+
+export async function getPerformanceStats(token: string): Promise<PerformanceStats> {
+  const response = await fetch(`${BASE_URL}/stats`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const json = (await response.json()) as { data?: PerformanceStats; message?: string }
+  if (!response.ok) throw new Error(json.message || `HTTP ${response.status}`)
+  if (!json.data) throw new Error('stats data is empty')
+  return json.data
+}

@@ -133,3 +133,19 @@ func (h *RAGHandler) DeleteDocument(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "document deleted successfully"})
 }
+
+func (h *RAGHandler) GetPerformanceStats(c *gin.Context) {
+	userID, ok := getUserIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+
+	stats, err := h.ragService.GetPerformanceStats(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "get stats failed", "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": stats})
+}

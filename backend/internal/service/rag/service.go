@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"ai-service-platform/backend/internal/domain/entity"
 	"ai-service-platform/backend/internal/domain/repository"
@@ -17,6 +19,15 @@ import (
 type Service struct {
 	repo          repository.RAGRepository
 	vectorStore   *redis.VectorStore
+	
+	// 性能统计
+	statsMu              sync.RWMutex
+	totalIngestCalls     int64
+	totalSearchCalls     int64
+	totalIngestTimeMs    int64
+	totalSearchTimeMs    int64
+	lastIngestTimeMs     int64
+	lastSearchTimeMs     int64
 }
 
 type IngestRequest struct {
@@ -50,6 +61,18 @@ type RetrieveMetrics struct {
 	MaxScore      float64 `json:"max_score"`
 	AverageScore  float64 `json:"average_score"`
 	MinScoreLimit float64 `json:"min_score_limit"`
+	DurationMS    int64   `json:"duration_ms"` // 搜索耗时（毫秒）
+}
+
+type PerformanceStats struct {
+	TotalDocuments    int     `json:"total_documents"`
+	TotalChunks       int     `json:"total_chunks"`
+	AvgIngestTimeMs   float64 `json:"avg_ingest_time_ms"`
+	AvgSearchTimeMs   float64 `json:"avg_search_time_ms"`
+	TotalIngestCalls  int64   `json:"total_ingest_calls"`
+	TotalSearchCalls  int64   `json:"total_search_calls"`
+	LastIngestTimeMs  int64   `json:"last_ingest_time_ms"`
+	LastSearchTimeMs  int64   `json:"last_search_time_ms"`
 }
 
 const (
@@ -71,6 +94,16 @@ func NewServiceWithRedis(repo repository.RAGRepository, redisClient *goredis.Cli
 }
 
 func (s *Service) Ingest(ctx context.Context, req IngestRequest) (*entity.RAGDocument, []entity.RAGChunk, error) {
+	startTime := time.Now()
+	defer func() {
+		elapsed := time.Since(startTime).Milliseconds()
+		s.statsMu.Lock()
+		s.totalIngestCalls++
+		s.totalIngestTimeMs += elapsed
+		s.lastIngestTimeMs = elapsed
+		s.statsMu.Unlock()
+	}()
+	
 	title := strings.TrimSpace(req.Title)
 	content := strings.TrimSpace(req.Content)
 	if title == "" || content == "" {
@@ -170,6 +203,16 @@ func (s *Service) Retrieve(ctx context.Context, userID uint, query string, topK 
 }
 
 func (s *Service) RetrieveWithMetrics(ctx context.Context, userID uint, query string, topK int) ([]RetrieveResult, RetrieveMetrics, error) {
+	startTime := time.Now()
+	defer func() {
+		elapsed := time.Since(startTime).Milliseconds()
+		s.statsMu.Lock()
+		s.totalSearchCalls++
+		s.totalSearchTimeMs += elapsed
+		s.lastSearchTimeMs = elapsed
+		s.statsMu.Unlock()
+	}()
+	
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, RetrieveMetrics{}, errors.New("query is required")
@@ -180,11 +223,15 @@ func (s *Service) RetrieveWithMetrics(ctx context.Context, userID uint, query st
 
 	// 优先使用 Redis 进行检索（更高效）
 	if s.vectorStore != nil {
-		return s.retrieveFromRedis(ctx, userID, query, topK)
+		results, metrics, err := s.retrieveFromRedis(ctx, userID, query, topK)
+		metrics.DurationMS = time.Since(startTime).Milliseconds()
+		return results, metrics, err
 	}
 
 	// 回退到 MySQL 检索
-	return s.retrieveFromMySQL(ctx, userID, query, topK)
+	results, metrics, err := s.retrieveFromMySQL(ctx, userID, query, topK)
+	metrics.DurationMS = time.Since(startTime).Milliseconds()
+	return results, metrics, err
 }
 
 // retrieveFromRedis 从 Redis 检索相关文档
@@ -415,4 +462,46 @@ func (s *Service) DeleteDocument(ctx context.Context, userID uint, documentID ui
 	}
 
 	return nil
+}
+
+// GetPerformanceStats 获取性能统计信息
+func (s *Service) GetPerformanceStats(ctx context.Context, userID uint) (PerformanceStats, error) {
+	// 获取文档和分块统计
+	docs, err := s.repo.ListDocuments(ctx, userID, 1000)
+	if err != nil {
+		return PerformanceStats{}, err
+	}
+
+	totalChunks := 0
+	for _, doc := range docs {
+		chunks, err := s.repo.GetChunksByDocumentID(ctx, doc.ID)
+		if err != nil {
+			continue
+		}
+		totalChunks += len(chunks)
+	}
+
+	s.statsMu.RLock()
+	defer s.statsMu.RUnlock()
+
+	avgIngestTime := float64(0)
+	if s.totalIngestCalls > 0 {
+		avgIngestTime = float64(s.totalIngestTimeMs) / float64(s.totalIngestCalls)
+	}
+
+	avgSearchTime := float64(0)
+	if s.totalSearchCalls > 0 {
+		avgSearchTime = float64(s.totalSearchTimeMs) / float64(s.totalSearchCalls)
+	}
+
+	return PerformanceStats{
+		TotalDocuments:   len(docs),
+		TotalChunks:      totalChunks,
+		AvgIngestTimeMs:  avgIngestTime,
+		AvgSearchTimeMs:  avgSearchTime,
+		TotalIngestCalls: s.totalIngestCalls,
+		TotalSearchCalls: s.totalSearchCalls,
+		LastIngestTimeMs: s.lastIngestTimeMs,
+		LastSearchTimeMs: s.lastSearchTimeMs,
+	}, nil
 }
