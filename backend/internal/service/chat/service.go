@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -142,6 +143,9 @@ func (s *Service) Complete(ctx context.Context, req ChatRequest) (*ChatResult, e
 	if err != nil {
 		return nil, err
 	}
+	// [DEBUG RAG] Log enhancement results
+	log.Printf("[CHAT:Complete] use_rag=%v, history_len=%d, has_system=%v", req.UseRAG, len(history), len(history) > 0 && history[0].Role == "system")
+	
 	history = append(history, contextMessage{Role: "user", Content: userContent})
 
 	if directReply, handled, err := s.tryDirectToolInvocation(ctx, req.UserID, userContent); err != nil {
@@ -633,25 +637,42 @@ func (s *Service) contextKey(sessionID uint) string {
 
 func (s *Service) enhanceWithRAG(ctx context.Context, userID uint, query string, useRAG bool, history []contextMessage) ([]contextMessage, error) {
 	if !useRAG || s.retriever == nil {
+		log.Printf("[RAG] Skipped: use_rag=%v, retriever_nil=%v", useRAG, s.retriever == nil)
 		return history, nil
 	}
 
 	contents, err := s.retriever.RetrieveContents(ctx, userID, query, 3)
 	if err != nil {
+		log.Printf("[RAG] Retrieval error: %v", err)
 		return nil, err
 	}
+	
+	log.Printf("[RAG] Query='%s', Retrieved=%d results", query, len(contents))
+	
 	if len(contents) == 0 {
+		log.Printf("[RAG] No results found, returning original history")
 		return history, nil
 	}
+	
+	log.Printf("[RAG] Found %d results, enhancing history", len(contents))
 
 	var builder strings.Builder
 	builder.WriteString("请优先基于以下知识库片段回答，若知识不足请明确说明。\n")
 	for index, content := range contents {
 		builder.WriteString(fmt.Sprintf("[%d] %s\n", index+1, content))
 	}
+	
+	systemMsg := builder.String()
+	preview := systemMsg
+	if len(preview) > 150 {
+		preview = preview[:150] + "..."
+	}
+	log.Printf("[RAG] System message length=%d, preview=%s", len(systemMsg), preview)
 
 	enhanced := make([]contextMessage, 0, len(history)+1)
-	enhanced = append(enhanced, contextMessage{Role: "system", Content: builder.String()})
+	enhanced = append(enhanced, contextMessage{Role: "system", Content: systemMsg})
 	enhanced = append(enhanced, history...)
+	
+	log.Printf("[RAG] Returning enhanced history: %d -> %d messages", len(history), len(enhanced))
 	return enhanced, nil
 }

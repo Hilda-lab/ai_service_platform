@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"ai-service-platform/backend/internal/domain/entity"
 	"ai-service-platform/backend/internal/domain/repository"
@@ -80,6 +81,7 @@ const (
 	defaultChunkLen = 320
 	chunkOverlapLen = 64
 	minScoreLimit   = 0.08
+	fallbackScoreLimit = 0.03
 )
 
 func NewService(repo repository.RAGRepository) *Service {
@@ -251,8 +253,10 @@ func (s *Service) retrieveFromRedis(ctx context.Context, userID uint, query stri
 		}, nil
 	}
 
-	queryVector := vectordb.Embed(query, embedDims)
+	searchQuery := normalizeSearchQuery(query)
+	queryVector := vectordb.Embed(searchQuery, embedDims)
 	results := make([]RetrieveResult, 0, len(chunkIDs))
+	allCandidates := make([]RetrieveResult, 0, len(chunkIDs))
 
 	// 从 Redis 获取向量数据
 	for _, chunkID := range chunkIDs {
@@ -275,14 +279,25 @@ func (s *Service) retrieveFromRedis(ctx context.Context, userID uint, query stri
 		}
 
 		score := cosine(queryVector, vector)
-		if score >= minScoreLimit {
-			results = append(results, RetrieveResult{
-				ChunkID:    chunkID,
-				DocumentID: documentID,
-				Content:    content,
-				Score:      score,
-			})
+		candidate := RetrieveResult{
+			ChunkID:    chunkID,
+			DocumentID: documentID,
+			Content:    content,
+			Score:      score,
 		}
+		allCandidates = append(allCandidates, candidate)
+
+		if score >= minScoreLimit {
+			results = append(results, candidate)
+		}
+	}
+
+	// 兜底策略：向量阈值未命中时，尝试关键词匹配，再放宽阈值。
+	if len(results) == 0 {
+		results = lexicalFallback(query, allCandidates, topK)
+	}
+	if len(results) == 0 {
+		results = topByScore(allCandidates, topK, fallbackScoreLimit)
 	}
 
 	// 排序和限制结果数
@@ -317,18 +332,29 @@ func (s *Service) retrieveFromMySQL(ctx context.Context, userID uint, query stri
 		return nil, RetrieveMetrics{}, err
 	}
 
-	queryVector := vectordb.Embed(query, embedDims)
+	searchQuery := normalizeSearchQuery(query)
+	queryVector := vectordb.Embed(searchQuery, embedDims)
 	results := make([]RetrieveResult, 0, len(chunks))
+	allCandidates := make([]RetrieveResult, 0, len(chunks))
 	for _, chunk := range chunks {
 		vector, unmarshalErr := vectordb.UnmarshalVector(chunk.Embedding)
 		if unmarshalErr != nil {
 			continue
 		}
 		score := cosine(queryVector, vector)
+		candidate := RetrieveResult{ChunkID: chunk.ID, DocumentID: chunk.DocumentID, Content: chunk.Content, Score: score}
+		allCandidates = append(allCandidates, candidate)
 		if score < minScoreLimit {
 			continue
 		}
-		results = append(results, RetrieveResult{ChunkID: chunk.ID, DocumentID: chunk.DocumentID, Content: chunk.Content, Score: score})
+		results = append(results, candidate)
+	}
+
+	if len(results) == 0 {
+		results = lexicalFallback(query, allCandidates, topK)
+	}
+	if len(results) == 0 {
+		results = topByScore(allCandidates, topK, fallbackScoreLimit)
 	}
 
 	sort.Slice(results, func(i, j int) bool { return results[i].Score > results[j].Score })
@@ -432,6 +458,103 @@ func cosine(a, b []float64) float64 {
 		dot += a[i] * b[i]
 	}
 	return dot
+}
+
+func normalizeSearchQuery(query string) string {
+	query = strings.TrimSpace(strings.ToLower(query))
+	if query == "" {
+		return query
+	}
+
+	noise := []string{
+		"请", "请问", "帮我", "帮忙", "查看", "看下", "看一下", "告诉我", "一下",
+		"what", "is", "the", "for", "about", "please", "show", "me",
+	}
+	for _, n := range noise {
+		query = strings.ReplaceAll(query, n, " ")
+	}
+
+	fields := strings.Fields(query)
+	if len(fields) == 0 {
+		return strings.TrimSpace(query)
+	}
+	return strings.Join(fields, " ")
+}
+
+func extractKeywords(query string) []string {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return nil
+	}
+
+	var b strings.Builder
+	for _, r := range q {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || unicode.Is(unicode.Han, r) {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune(' ')
+		}
+	}
+
+	stop := map[string]struct{}{
+		"请": {}, "请问": {}, "帮我": {}, "帮忙": {}, "查看": {}, "看下": {}, "看一下": {}, "告诉我": {}, "一下": {},
+		"what": {}, "is": {}, "the": {}, "for": {}, "about": {}, "show": {}, "me": {}, "please": {},
+	}
+
+	out := make([]string, 0)
+	for _, token := range strings.Fields(b.String()) {
+		if _, ok := stop[token]; ok {
+			continue
+		}
+		if len([]rune(token)) < 2 {
+			continue
+		}
+		out = append(out, token)
+	}
+	return out
+}
+
+func lexicalFallback(query string, candidates []RetrieveResult, topK int) []RetrieveResult {
+	keywords := extractKeywords(query)
+	if len(keywords) == 0 {
+		return nil
+	}
+
+	results := make([]RetrieveResult, 0)
+	for _, c := range candidates {
+		text := strings.ToLower(c.Content)
+		hit := 0
+		for _, kw := range keywords {
+			if strings.Contains(text, kw) {
+				hit++
+			}
+		}
+		if hit == 0 {
+			continue
+		}
+		c.Score = 0.2 + 0.05*float64(hit)
+		results = append(results, c)
+	}
+
+	sort.Slice(results, func(i, j int) bool { return results[i].Score > results[j].Score })
+	if len(results) > topK {
+		results = results[:topK]
+	}
+	return results
+}
+
+func topByScore(candidates []RetrieveResult, topK int, min float64) []RetrieveResult {
+	results := make([]RetrieveResult, 0)
+	for _, c := range candidates {
+		if c.Score >= min {
+			results = append(results, c)
+		}
+	}
+	sort.Slice(results, func(i, j int) bool { return results[i].Score > results[j].Score })
+	if len(results) > topK {
+		results = results[:topK]
+	}
+	return results
 }
 
 func (s *Service) DeleteDocument(ctx context.Context, userID uint, documentID uint) error {

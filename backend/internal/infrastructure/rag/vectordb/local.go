@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 type ScoredChunk struct {
@@ -112,13 +113,33 @@ func normalize(vector []float64) {
 
 func tokenize(text string) []string {
 	lower := strings.ToLower(text)
-	replacer := strings.NewReplacer(",", " ", ".", " ", "\n", " ", "\r", " ", "\t", " ", "，", " ", "。", " ", "；", " ", "：", " ", "！", " ", "？", " ", "、", " ")
+	replacer := strings.NewReplacer(
+		",", " ", ".", " ", ":", " ", ";", " ", "=", " ", "|", " ",
+		"(", " ", ")", " ", "[", " ", "]", " ", "{", " ", "}", " ",
+		"<", " ", ">", " ", "\"", " ", "'", " ", "`", " ",
+		"\n", " ", "\r", " ", "\t", " ", "，", " ", "。", " ",
+		"；", " ", "：", " ", "！", " ", "？", " ", "、", " ",
+	)
 	cleaned := replacer.Replace(lower)
 	parts := strings.Fields(cleaned)
+
+	// 为中文添加二元切分，提高短中文查询召回率。
+	// 例如“汇报稿”会额外生成“汇报”“报稿”。
+	runes := []rune(lower)
+	for i := 0; i < len(runes)-1; i++ {
+		if isCJK(runes[i]) && isCJK(runes[i+1]) {
+			parts = append(parts, string([]rune{runes[i], runes[i+1]}))
+		}
+	}
+
 	if len(parts) == 0 {
-		return []string{lower}
+		return []string{strings.TrimSpace(lower)}
 	}
 	return parts
+}
+
+func isCJK(r rune) bool {
+	return unicode.Is(unicode.Han, r)
 }
 
 func fnv1a(text string) uint32 {
