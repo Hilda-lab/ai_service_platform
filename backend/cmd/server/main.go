@@ -53,7 +53,7 @@ func main() {
 	chatRepo := mysql.NewChatRepository(db)
 	ragRepo := mysql.NewRAGRepository(db)
 	visionRepo := mysql.NewVisionRepository(db)
-	ragSvc := ragservice.NewServiceWithRedis(ragRepo, redisClient)
+	ragSvc := ragservice.NewService(ragRepo)
 	ragHandler := handler.NewRAGHandler(ragSvc)
 
 	openaiClient := openaiclient.NewClient(cfg.OpenAIBaseURL, cfg.OpenAIAPIKey)
